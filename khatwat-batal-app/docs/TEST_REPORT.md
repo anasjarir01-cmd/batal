@@ -104,3 +104,14 @@
   - `…-02-hayato.zip` إلى `…-08-yorigumo.zip`: الصور الأصلية PNG لكل شخصية.
   - تُفك كلها في نفس المجلد. تم التحقق من أن مجموع الأجزاء يطابق الملف الكامل بايتًا ببايت، والفرق الوحيد ملف إضافي `PARTS-README.txt`.
 - يمكن أيضًا إعادة إنتاج الملفين من المستودع: فرع المصدر في GitHub، ثم `npm ci && npm run build` لنسخة الإنتاج.
+
+## 6. النشر على GitHub Pages
+- الرابط: https://anasjarir01-cmd.github.io/batal/
+- ينشره workflow `.github/workflows/deploy-pages.yml` عند كل دفع يغيّر التطبيق. الترتيب: بناء، ثم اختبارات، ثم نشر، ثم تحقق.
+- **تحقق HTTP بعد النشر**: الصفحة و`manifest.webmanifest` و`sw.js` والأيقونات وعينة من الصور ردّت كلها 200. نوع manifest هو `application/manifest+json`، ونوع sw.js هو `application/javascript`.
+- **تحقق في Chromium على الموقع المنشور** (`e2e/deployed.spec.ts` على خادم GitHub):
+  - أخطاء manifest: لا شيء.
+  - `Page.getInstallabilityErrors`: لا شيء، أي لا عائق تثبيت حسب Chrome.
+  - تنزيل أصول اللعب، ثم قطع الشبكة وإعادة تحميل فعلية: الصور والصفحات تعمل.
+  - تصدير نسخة احتياطية دون شبكة ينزّل ملف ZIP صالحًا.
+- لم يُجرَّب التثبيت على هاتف حقيقي من طرفي. التحقق تم في Chromium على الخادم.
