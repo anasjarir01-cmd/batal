@@ -3,6 +3,7 @@ import { CATALOG, originalUrl, ROLE_LABEL } from '../../catalog';
 import { previewPlayerHit } from '../../engine/battle/engine';
 import type { AppData } from '../../store/ops';
 import { Num, Sheet } from '../components/common';
+import { abilityTint, tintClass } from './roles';
 import { heroShortName } from './Units';
 
 export function CardZoom({ data, abilityId, cardId, target, onClose }: { data: AppData; abilityId: string; cardId?: string; target?: number; onClose: () => void }) {
@@ -15,7 +16,7 @@ export function CardZoom({ data, abilityId, cardId, target, onClose }: { data: A
   return (
     <Sheet title={a.name} onClose={onClose} wide className="zoom-sheet">
       <div className="zoom">
-        <img className="zoom-img" src={originalUrl(a.image)} alt={`${a.name} — البطاقة الأصلية`} />
+        <img className={`zoom-img framed ${tintClass(abilityTint(a.id))}`} src={originalUrl(a.image)} alt={`${a.name} — البطاقة الأصلية`} />
         <div className="zoom-info">
           <p className="muted small">
             {owner?.name}

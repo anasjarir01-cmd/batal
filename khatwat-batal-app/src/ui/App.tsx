@@ -76,6 +76,16 @@ export function App() {
     document.documentElement.dataset.reducedMotion = reduced ? 'true' : 'false';
   }, [reduced]);
 
+  // إيقاف الحركات الزخرفية مؤقتًا عند إخفاء التطبيق
+  useEffect(() => {
+    const on = () => {
+      document.documentElement.dataset.appHidden = document.visibilityState === 'hidden' ? 'true' : 'false';
+    };
+    on();
+    document.addEventListener('visibilitychange', on);
+    return () => document.removeEventListener('visibilitychange', on);
+  }, []);
+
   if (bootError)
     return (
       <div className="boot-error">
@@ -93,17 +103,20 @@ export function App() {
     );
 
   const battleBusy = nav.page === 'battle' && !!data.battle.execution && data.battle.execution.cursor < data.battle.execution.events.length;
+  // داخل ساحة القتال الفعلية: لا ترويسة ولا شريط تنقل (نفس شرط عرض الساحة في BattlePage).
+  const st = data.battle.state;
+  const inArena = nav.page === 'battle' && !!st && (!st.outcome || battleBusy);
   const o = nav.overlay;
 
   return (
-    <div className={`app page-${nav.page}`} data-page={nav.page}>
+    <div className={`app page-${nav.page} ${inArena ? 'in-arena' : ''}`} data-page={nav.page}>
       <div className="bg-anim" aria-hidden="true">
         <span className="blob b1" />
         <span className="blob b2" />
         <span className="blob b3" />
         <span className="blob b4" />
       </div>
-      <header className="topbar">
+      <header className="topbar" hidden={inArena}>
         <div className="brand">
           <img src="./icons/icon.svg" alt="" width={30} height={30} />
           <div>
@@ -122,7 +135,7 @@ export function App() {
         </div>
       </header>
 
-      {pwa.updateReady && !battleBusy ? (
+      {pwa.updateReady && !battleBusy && !inArena ? (
         <div className="update-banner" role="status">
           <span>نسخة جديدة من التطبيق جاهزة.</span>
           <button className="btn btn-small btn-primary" onClick={() => void applyUpdate()}>
@@ -144,7 +157,7 @@ export function App() {
         </button>
       ) : null}
 
-      <nav className="tabbar" aria-label="الصفحات الرئيسية">
+      <nav className="tabbar" aria-label="الصفحات الرئيسية" hidden={inArena}>
         {TABS.map((t) => (
           <button key={t.page} className={`tab ${nav.page === t.page ? 'active' : ''}`} onClick={() => goto(t.page)} aria-current={nav.page === t.page ? 'page' : undefined}>
             <Icon name={t.icon} size={24} />

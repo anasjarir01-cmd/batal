@@ -1,18 +1,25 @@
-// ساحة القتال بالترتيب الإلزامي من أعلى لأسفل: بانر الزعيم، حركاته الثلاث، خطة اللاعب، اليد، الأبطال.
+// ساحة القتال بالترتيب الإلزامي من أعلى لأسفل: بانر الزعيم، حركاته الثلاث، خطة اللاعب
+// (زر التنفيذ يسارًا ومؤشر الطاقة يمينًا)، اليد، الأبطال. لا شريط تنقل ولا ترويسة أثناء المعركة.
+// لمسة واحدة تختار، ولمستان سريعتان تكبّران؛ القواعد والأرقام كلها من المحرك دون تغيير.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { sfx, sfxForFamily } from '../../audio/sfx';
-import { CATALOG, displayUrl } from '../../catalog';
+import { CATALOG, displayUrl, heroImageForLevel } from '../../catalog';
+import { cosmeticLevel } from '../../engine/economy';
 import { legalTargets, needsTarget, validatePlan, ENERGY_PER_ROUND, PLAN_SLOTS } from '../../engine/battle/engine';
 import type { BattleState, BoardSnapshot, BossAction, PlannedCard } from '../../engine/battle/types';
+import { usePwa } from '../../pwa/register';
 import { act, getDb } from '../../store/appStore';
 import { commitRound, OpError, retreatBattle, setMeta, setPlaybackCursor, type AppData } from '../../store/ops';
 import { Num, Sheet } from '../components/common';
 import { confirmDialog, toast } from '../components/dialogs';
 import { Icon } from '../components/Icon';
-import { openOverlay } from '../nav';
+import { goto, openOverlay } from '../nav';
+import { ArenaMenu } from './ArenaMenu';
 import { HandPager } from './HandPager';
 import { fxForGroup, groupEvents } from './playback';
-import { BossBanner, HeroToken, heroShortName, unitDetailLines } from './Units';
+import { abilityTint, tintClass, type Tint } from './roles';
+import { BossBanner, HeroToken, heroShortName, unitDetailLines, type HeroMark } from './Units';
+import { useTap } from './useTap';
 import { VfxLayer, type VfxHandle } from './Vfx';
 
 interface View {
@@ -24,7 +31,20 @@ interface View {
   banner: string | null;
 }
 
+/** وضع التفاعل الحالي في الساحة. */
+type Mode =
+  | { kind: 'idle' }
+  /** بطاقة جديدة من اليد تنتظر اختيار هدفها. */
+  | { kind: 'target'; cardId: string }
+  /** بطاقة مخططة محددة: تُنقل بلمس خانة أخرى، أو يُغيَّر هدفها بلمس بطل. */
+  | { kind: 'slot'; index: number }
+  /** حركة زعيم ظاهرة محددة: أهدافها مُعلَّمة على الأبطال. */
+  | { kind: 'boss'; k: number };
+
+const IDLE: Mode = { kind: 'idle' };
 const progressMemo = new Map<string, number>();
+type Draft = { key: string; plan: PlannedCard[] };
+let draftMemo: Draft | null = null;
 
 function boardOf(s: BattleState): BoardSnapshot {
   return { round: s.round, phase: s.phase, phase2Pending: s.phase2Pending, heroes: s.heroes, boss: s.boss };
@@ -57,27 +77,48 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
   const vfx = useRef<VfxHandle>(null);
   const [view, setView] = useState<View | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showLog, setShowLog] = useState(false);
-  const [targeting, setTargeting] = useState<{ cardId: string; index?: number } | null>(null);
+  const [mode, setMode] = useState<Mode>(IDLE);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [detail, setDetail] = useState<'boss' | number | null>(null);
+  const [hiddenZoom, setHiddenZoom] = useState<number | null>(null);
+  const updateReady = usePwa().updateReady;
 
   // ——— الخطة (مسودة محفوظة لا تؤثر في الحساب) ———
   const draftKey = `${live.battleId}:${live.round}`;
   const [plan, setPlan] = useState<PlannedCard[]>(() => {
-    const d = data.meta.battleDraft as { key: string; plan: PlannedCard[] } | undefined;
+    // آخر مسودة محفوظة: من الذاكرة إن خرج اللاعب من الساحة وعاد، وإلا من التخزين بعد إعادة التحميل
+    const d = draftMemo?.key === draftKey ? draftMemo : (data.meta.battleDraft as Draft | undefined);
     if (d?.key === draftKey && validatePlan(live, d.plan) === null) return d.plan;
     return [];
   });
+  // مراجع لأحدث قيمة: اللمسة الواحدة تُنفَّذ بعد مهلة قصيرة، فلا يجوز أن تقرأ خطة قديمة.
+  const planRef = useRef(plan);
+  const modeRef = useRef(mode);
+  const liveRef = useRef(live);
+  const lockedRef = useRef(false);
+  planRef.current = plan;
+  modeRef.current = mode;
+  liveRef.current = live;
+  const commitPlan = (next: PlannedCard[]) => {
+    planRef.current = next;
+    setPlan(next);
+  };
+  const setModeNow = (m: Mode) => {
+    modeRef.current = m;
+    setMode(m);
+  };
+
   const planKeyRef = useRef(draftKey);
   useEffect(() => {
     if (planKeyRef.current !== draftKey) {
       planKeyRef.current = draftKey;
-      setPlan([]);
-      setTargeting(null);
+      commitPlan([]);
+      setModeNow(IDLE);
     }
   }, [draftKey]);
   useEffect(() => {
-    void setMeta(getDb(), 'battleDraft', { key: draftKey, plan }).catch(() => undefined);
+    draftMemo = { key: draftKey, plan };
+    void setMeta(getDb(), 'battleDraft', draftMemo).catch(() => undefined);
   }, [plan, draftKey]);
 
   const playing = !!exec && Math.max(exec.cursor, progressMemo.get(exec.id) ?? 0) < exec.events.length;
@@ -107,6 +148,7 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
     }
     let v: View = { board, revealed, activeSlot: null, doneSlots, zoom: null, banner: null };
     setView(v);
+    setModeNow(IDLE);
     const upd = (p: Partial<View>) => {
       v = { ...v, ...p };
       if (!cancelled) setView(v);
@@ -209,63 +251,143 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
   const bossPlan: BossAction[] = shownState.bossPlan;
   const planIds = new Set(shownPlan.map((p) => p.cardId));
   const hand = playing && exec ? exec.before.hand.filter((id) => !planIds.has(id)) : live.hand;
-  const cost = (id: string) => CATALOG.abilities.get(shownState.cards[id].abilityId)?.cost ?? 0;
-  const used = shownPlan.reduce((s, p) => s + cost(p.cardId), 0);
-  const remaining = ENERGY_PER_ROUND - used;
+  const cost = (st: BattleState, id: string) => CATALOG.abilities.get(st.cards[id].abilityId)?.cost ?? 0;
+  const usedOf = (st: BattleState, p: PlannedCard[]) => p.reduce((s, q) => s + cost(st, q.cardId), 0);
+  const remaining = ENERGY_PER_ROUND - usedOf(shownState, shownPlan);
   const locked = playing || busy;
+  lockedRef.current = locked;
+  const planError = locked ? null : validatePlan(live, plan);
+  const canExecute = !locked && plan.length > 0 && planError === null;
+  const visibleMove = (k: number) => !bossPlan[k].hidden || (view?.revealed.includes(k) ?? false);
 
-  // ——— تفاعل التخطيط ———
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && modeRef.current.kind !== 'idle') setModeNow(IDLE);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // ——— تفاعل التخطيط (يقرأ دائمًا أحدث حالة عبر المراجع) ———
   function selectCard(id: string) {
-    if (locked) return;
-    const existing = plan.findIndex((p) => p.cardId === id);
+    if (lockedRef.current) return;
+    const st = liveRef.current;
+    const cur = planRef.current;
+    const m = modeRef.current;
+    const existing = cur.findIndex((p) => p.cardId === id);
     if (existing >= 0) {
-      setPlan(plan.filter((_, i) => i !== existing));
+      commitPlan(cur.filter((_, i) => i !== existing));
+      setModeNow(IDLE);
       sfx.deselect();
       return;
     }
-    const a = CATALOG.abilities.get(live.cards[id].abilityId)!;
-    if (plan.length >= PLAN_SLOTS) return toast('ثلاث بطاقات كحد أقصى في الجولة', 'info');
-    if ((a.cost ?? 0) > remaining) return toast(`الطاقة لا تكفي: ${a.name} تحتاج ${a.cost} والمتاح ${remaining}`, 'info');
-    if (needsTarget(live, id)) {
-      const lt = legalTargets(live, id);
-      if (!lt.length) return toast(a.heroTarget === 'ally-other' ? 'لا يوجد حليف آخر حي لهذه القدرة' : 'لا يوجد هدف حي', 'info');
-      setTargeting({ cardId: id });
+    if (m.kind === 'target' && m.cardId === id) {
+      setModeNow(IDLE);
+      sfx.deselect();
+      return;
+    }
+    const a = CATALOG.abilities.get(st.cards[id].abilityId)!;
+    const left = ENERGY_PER_ROUND - usedOf(st, cur);
+    if (cur.length >= PLAN_SLOTS) return toast('ثلاث بطاقات كحد أقصى في الجولة', 'info');
+    if ((a.cost ?? 0) > left) return toast(`الطاقة لا تكفي: ${a.name} تحتاج ${a.cost} والمتاح ${left}`, 'info');
+    if (needsTarget(st, id)) {
+      if (!legalTargets(st, id).length) return toast(a.heroTarget === 'ally-other' ? 'لا يوجد حليف آخر حي لهذه القدرة' : 'لا يوجد هدف حي', 'info');
+      setModeNow({ kind: 'target', cardId: id });
       sfx.select();
       return;
     }
-    setPlan([...plan, { cardId: id }]);
+    commitPlan([...cur, { cardId: id }]);
+    setModeNow(IDLE);
     sfx.select();
   }
 
-  function chooseTarget(slot: number) {
-    if (!targeting) return;
-    const { cardId, index } = targeting;
-    if (index !== undefined) setPlan(plan.map((p, i) => (i === index ? { ...p, target: slot } : p)));
-    else setPlan([...plan, { cardId, target: slot }]);
-    setTargeting(null);
-    sfx.select();
+  function tapHero(slot: number) {
+    const st = liveRef.current;
+    const cur = planRef.current;
+    const m = modeRef.current;
+    if (!lockedRef.current && m.kind === 'target') {
+      if (legalTargets(st, m.cardId).includes(slot)) {
+        commitPlan([...cur, { cardId: m.cardId, target: slot }]);
+        setModeNow(IDLE);
+        sfx.select();
+      }
+      return;
+    }
+    if (!lockedRef.current && m.kind === 'slot') {
+      const p = cur[m.index];
+      if (p && needsTarget(st, p.cardId) && legalTargets(st, p.cardId).includes(slot)) {
+        commitPlan(cur.map((q, i) => (i === m.index ? { ...q, target: slot } : q)));
+        setModeNow(IDLE);
+        sfx.select();
+        return;
+      }
+    }
+    setDetail(slot);
   }
 
-  function move(i: number, d: -1 | 1) {
-    const j = i + d;
-    if (j < 0 || j >= plan.length) return;
-    const next = plan.slice();
-    [next[i], next[j]] = [next[j], next[i]];
-    setPlan(next);
+  function tapSlot(k: number) {
+    if (lockedRef.current) return;
+    const cur = planRef.current;
+    const m = modeRef.current;
+    if (m.kind === 'slot' && m.index < cur.length) {
+      const i = m.index;
+      if (k === i) {
+        setModeNow(IDLE);
+        sfx.deselect();
+        return;
+      }
+      if (k >= cur.length) {
+        // الخطة متصلة (الخانة k تقابل حركة الزعيم k)، فالخانة الفارغة ليست وجهة نقل.
+        setModeNow(IDLE);
+        return;
+      }
+      const next = cur.slice();
+      [next[i], next[k]] = [next[k], next[i]];
+      commitPlan(next);
+      setModeNow(IDLE);
+      sfx.select();
+      return;
+    }
+    if (k < cur.length) {
+      setModeNow({ kind: 'slot', index: k });
+      sfx.select();
+    }
+  }
+
+  function removeSlot(k: number) {
+    if (lockedRef.current) return;
+    const cur = planRef.current;
+    if (k >= cur.length) return;
+    commitPlan(cur.filter((_, i) => i !== k));
+    setModeNow(IDLE);
+    sfx.deselect();
+  }
+
+  function tapBoss(k: number) {
+    if (!visibleMove(k)) {
+      toast(`حركة الزعيم ${k + 1} تُكشف لحظة تنفيذ خانتها`, 'info');
+      return;
+    }
+    const m = modeRef.current;
+    setModeNow(m.kind === 'boss' && m.k === k ? IDLE : { kind: 'boss', k });
+  }
+
+  function zoomBoss(k: number) {
+    if (!visibleMove(k)) return setHiddenZoom(k);
+    openOverlay({ kind: 'card', abilityId: bossPlan[k].abilityId });
   }
 
   async function execute() {
-    if (locked) return;
-    const err = validatePlan(live, plan);
+    if (lockedRef.current) return;
+    const cur = planRef.current;
+    if (!cur.length) return;
+    const err = validatePlan(liveRef.current, cur);
     if (err) return toast(err, 'error');
-    if (!plan.length) {
-      const ok = await confirmDialog({ title: 'تمرير الجولة؟', body: <p>لن تلعب أي بطاقة، والزعيم سينفذ حركاته الثلاث.</p>, confirmText: 'تمرير' });
-      if (!ok) return;
-    }
+    lockedRef.current = true;
     setBusy(true);
-    setTargeting(null);
+    setModeNow(IDLE);
     try {
-      await act((db) => commitRound(db, rec.rev, plan));
+      await act((db) => commitRound(db, rec.rev, cur));
       sfx.confirm();
     } catch (e) {
       toast(e instanceof OpError ? e.message : 'تعذر تنفيذ الجولة', 'error');
@@ -274,8 +396,37 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
     }
   }
 
+  async function passRound() {
+    setMenuOpen(false);
+    if (lockedRef.current) return;
+    const ok = await confirmDialog({
+      title: 'تمرير الجولة؟',
+      body: <p>لن تُلعب أي بطاقة هذه الجولة{planRef.current.length ? ' (ولا البطاقات الموضوعة في الخطة)' : ''}، وسينفذ الزعيم حركاته الثلاث.</p>,
+      confirmText: 'تمرير',
+    });
+    if (!ok || lockedRef.current) return;
+    lockedRef.current = true;
+    setBusy(true);
+    setModeNow(IDLE);
+    try {
+      await act((db) => commitRound(db, rec.rev, []));
+      sfx.confirm();
+    } catch (e) {
+      toast(e instanceof OpError ? e.message : 'تعذر تمرير الجولة', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function doRetreat() {
-    const ok = await confirmDialog({ title: 'الانسحاب من المعركة؟', body: <p>تنتهي المعركة دون انتصارات. لا توجد أي عقوبة.</p>, confirmText: 'انسحاب', tone: 'danger' });
+    setMenuOpen(false);
+    if (lockedRef.current) return;
+    const ok = await confirmDialog({
+      title: 'الانسحاب من المعركة؟',
+      body: <p>تنتهي المعركة فورًا دون انتصارات للأبطال، ولا توجد أي عقوبة. لا يمكن التراجع بعد التأكيد.</p>,
+      confirmText: 'انسحاب',
+      tone: 'danger',
+    });
     if (!ok) return;
     try {
       await act((db) => retreatBattle(db, rec.rev));
@@ -284,211 +435,215 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
     }
   }
 
-  const targetLegal = targeting ? legalTargets(live, targeting.cardId) : [];
+  // ——— علامات العرض ———
   const cycleStart = Math.floor((shownState.round - 1) / 3) * 3 + 1;
   const executedThisCycle = shownState.bossHistory.filter((h) => h.round >= cycleStart && h.round < shownState.round);
+  const pendingCard = mode.kind === 'target' ? mode.cardId : null;
+  const selSlot = mode.kind === 'slot' && mode.index < shownPlan.length ? mode.index : null;
+  const selPlanned = selSlot !== null ? shownPlan[selSlot] : undefined;
+  const selNeedsTarget = !!selPlanned && needsTarget(live, selPlanned.cardId);
+  const inspected = mode.kind === 'boss' && visibleMove(mode.k) ? bossPlan[mode.k] : undefined;
+
+  function heroMark(slot: number): HeroMark {
+    if (pendingCard) return legalTargets(live, pendingCard).includes(slot) ? 'selectable' : 'dimmed';
+    if (selPlanned && selNeedsTarget) {
+      if (selPlanned.target === slot) return 'current';
+      return legalTargets(live, selPlanned.cardId).includes(slot) ? 'selectable' : null;
+    }
+    if (inspected?.targets.includes(slot)) return 'threat';
+    return null;
+  }
+
+  let hint: string | null = null;
+  if (pendingCard) hint = `اختر هدفًا لـ«${CATALOG.abilities.get(live.cards[pendingCard].abilityId)?.name}» من الأبطال`;
+  else if (selPlanned) {
+    const canMove = shownPlan.length > 1;
+    hint = selNeedsTarget ? (canMove ? 'المس خانة أخرى لتبديل الترتيب، أو بطلًا لتغيير الهدف' : 'المس بطلًا لتغيير هدف البطاقة') : canMove ? 'المس خانة أخرى لتبديل ترتيب البطاقتين' : 'ضع بطاقة أخرى لتتمكن من تبديل الترتيب';
+  }
+  else if (inspected && mode.kind === 'boss') hint = inspected.targets.length ? `أهداف حركة الزعيم ${mode.k + 1} مُعلَّمة على الأبطال` : `حركة الزعيم ${mode.k + 1} تخصّه هو`;
 
   return (
-    <div className={`arena ${playing ? 'is-playing' : ''} ${targeting ? 'is-targeting' : ''}`} ref={rootRef} data-testid="arena">
+    <div className={`arena ${playing ? 'is-playing' : ''} ${mode.kind !== 'idle' ? `mode-${mode.kind}` : ''}`} ref={rootRef} data-testid="arena">
+      <div className="arena-sky" aria-hidden="true">
+        <span className="aurora au1" />
+        <span className="aurora au2" />
+        <span className="aurora au3" />
+        <svg className="sky-lines" viewBox="0 0 400 800" preserveAspectRatio="none">
+          <path d="M-20 170 C 90 120, 200 210, 420 140" />
+          <path d="M-20 420 C 120 370, 260 470, 420 390" />
+          <path d="M-20 640 C 140 600, 250 690, 420 620" />
+          <path className="thin" d="M-20 300 C 110 270, 240 330, 420 280" />
+        </svg>
+        <span className="stars s1" />
+        <span className="stars s2" />
+      </div>
       <VfxLayer ref={vfx} rootRef={rootRef} />
 
-      {/* 1 — بانر الزعيم */}
-      <BossBanner boss={board.boss} phase={board.phase} phase2Pending={board.phase2Pending} round={board.round} onDetails={() => setDetail('boss')} />
-
-      {/* 2 — حركات الزعيم الثلاث */}
-      <section className="row boss-moves" data-testid="boss-moves" aria-label="حركات الزعيم">
-        {bossPlan.map((b, k) => {
-          const visible = !b.hidden || (view?.revealed.includes(k) ?? false);
-          const a = visible ? CATALOG.abilities.get(b.abilityId) : undefined;
-          const active = view?.activeSlot === k;
-          const done = view?.doneSlots.includes(k);
-          return (
-            <div key={k} className={`move-slot ${active ? 'active' : ''} ${done ? 'done' : ''}`} data-slot={k + 1}>
-              <span className="slot-no">
-                <Num>{k + 1}</Num>
-              </span>
-              {visible && a ? (
-                <button className={`card-img-btn ${b.hidden ? 'flip-in' : ''}`} onClick={() => openOverlay({ kind: 'card', abilityId: a.id })} aria-label={`حركة الزعيم ${k + 1}: ${a.name}`}>
-                  <img src={displayUrl(a.image)} alt={a.name} draggable={false} />
-                </button>
-              ) : (
-                <div className="card-back" aria-label={`حركة الزعيم ${k + 1}: مخفية`} role="img">
-                  <span>؟</span>
-                </div>
-              )}
-              <div className="slot-side slot-targets">
-                {visible ? (
-                  b.targets.length ? (
-                    b.targets.length === shownState.heroes.filter((h) => h.hp > 0).length && CATALOG.abilities.get(b.abilityId)?.bossTarget === 'all' ? (
-                      <span className="tchip">الكل</span>
-                    ) : (
-                      b.targets.map((t) => (
-                        <span key={t} className="tchip">
-                          {heroShortName(shownState.heroes[t].heroId)}
-                        </span>
-                      ))
-                    )
-                  ) : (
-                    <span className="tchip">نفسه</span>
-                  )
-                ) : (
-                  <span className="tchip muted">مخفية</span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </section>
-
-      {/* 3 — خطة اللاعب */}
-      <section className="row plan-row" data-testid="plan-row" aria-label="خطة اللاعب">
-        {Array.from({ length: PLAN_SLOTS }, (_, k) => {
-          const p = shownPlan[k];
-          const a = p ? CATALOG.abilities.get(shownState.cards[p.cardId].abilityId) : undefined;
-          const active = view?.activeSlot === k;
-          const done = view?.doneSlots.includes(k);
-          return (
-            <div key={k} className={`move-slot plan-slot ${p ? 'filled' : 'empty'} ${active ? 'active' : ''} ${done ? 'done' : ''}`} data-slot={k + 1}>
-              <span className="slot-no">
-                <Num>{k + 1}</Num>
-              </span>
-              {p && a ? (
-                <>
-                  <button className="card-img-btn" onClick={() => openOverlay({ kind: 'card', abilityId: a.id, cardId: p.cardId, target: p.target })} aria-label={`الخانة ${k + 1}: ${a.name}`}>
-                    <img src={displayUrl(a.image)} alt={a.name} draggable={false} />
-                  </button>
-                  <div className="slot-side">
-                  <div className="slot-targets">
-                    {p.target !== undefined ? (
-                      <button className="tchip link" disabled={locked} onClick={() => setTargeting({ cardId: p.cardId, index: k })} aria-label="تغيير الهدف">
-                        ← {heroShortName(shownState.heroes[p.target].heroId)}
-                      </button>
-                    ) : (
-                      <span className="tchip">{a.heroTarget === 'none' && a.effects.some((e) => e.target === 'boss') ? 'الزعيم' : 'تلقائي'}</span>
-                    )}
-                  </div>
-                  {!locked ? (
-                    <div className="slot-tools">
-                      <button className="mini-btn" aria-label="تقديم" disabled={k === 0} onClick={() => move(k, -1)}>
-                        <span className="flip-x">
-                          <Icon name="back" size={14} />
-                        </span>
-                      </button>
-                      <button className="mini-btn" aria-label="إزالة" onClick={() => setPlan(plan.filter((_, i) => i !== k))}>
-                        <Icon name="close" size={14} />
-                      </button>
-                      <button className="mini-btn" aria-label="تأخير" disabled={k === shownPlan.length - 1} onClick={() => move(k, 1)}>
-                        <Icon name="back" size={14} />
-                      </button>
-                    </div>
-                  ) : null}
-                  </div>
-                </>
-              ) : (
-                <div className="card-empty">{k === shownPlan.length && !locked ? 'اختر بطاقة' : ''}</div>
-              )}
-            </div>
-          );
-        })}
-      </section>
-
-      {/* شريط التحكم قرب التخطيط */}
-      <section className="control-bar">
-        <span className="round-chip" aria-label={`الجولة ${board.round}`}>
-          ج<Num>{board.round}</Num>
-        </span>
-        <span className="energy" aria-label={`الطاقة المتاحة ${remaining} من ${ENERGY_PER_ROUND}`}>
-          ⚡ <Num>{remaining}/{ENERGY_PER_ROUND}</Num>
-        </span>
-        <button className="chip-btn small" onClick={() => setShowLog((v) => !v)} aria-expanded={showLog} aria-label="سجل بطاقات الزعيم المنفذة في هذه الدورة">
-          المنفذة <Num>{executedThisCycle.length}/9</Num>
-        </button>
-        {playing ? (
-          <button className="btn btn-ghost btn-small" onClick={() => void skipPlayback()}>
-            تخطي العرض
+      {/* 1 — بانر الزعيم، وزر القائمة أعلى يساره */}
+      <BossBanner boss={board.boss} phase={board.phase} phase2Pending={board.phase2Pending} round={board.round} onDetails={() => setDetail('boss')} selfTarget={!!inspected && !inspected.targets.length}>
+        <div className="bb-tools">
+          <button className="bb-gear" onClick={() => setMenuOpen(true)} aria-label={updateReady && !playing ? 'قائمة المعركة (تحديث جديد جاهز)' : 'قائمة المعركة'} aria-haspopup="dialog" data-testid="arena-menu-btn">
+            <Icon name="gear" size={22} />
+            {updateReady && !playing ? <i className="bb-dot" aria-hidden="true" /> : null}
           </button>
-        ) : (
-          <>
-            <button className="icon-btn" aria-label="انسحاب" onClick={() => void doRetreat()} disabled={locked}>
-              <Icon name="retreat" size={20} />
+          {playing ? (
+            <button className="bb-skip" onClick={() => void skipPlayback()} aria-label="تخطي العرض">
+              <Icon name="skip" size={14} /> تخطي
             </button>
-            <button className="btn btn-primary execute-btn" onClick={() => void execute()} disabled={locked} data-testid="execute">
-              {plan.length ? 'تنفيذ' : 'تمرير الجولة'}
-            </button>
-          </>
-        )}
-      </section>
-      {showLog ? (
-        <div className="boss-log" aria-label="البطاقات المنفذة في هذه الدورة">
-          {executedThisCycle.length ? (
-            executedThisCycle.map((h) => {
-              const a = CATALOG.abilities.get(h.abilityId)!;
-              return (
-                <button key={`${h.round}-${h.slot}`} className="log-thumb" onClick={() => openOverlay({ kind: 'card', abilityId: a.id })} aria-label={a.name}>
-                  <img src={displayUrl(a.image)} alt={a.name} />
-                </button>
-              );
-            })
-          ) : (
-            <span className="muted small">لم تُنفذ أي بطاقة في هذه الدورة بعد.</span>
-          )}
+          ) : null}
         </div>
-      ) : null}
-      {targeting ? (
-        <div className="targeting-hint" role="status">
-          اختر هدفًا لـ«{CATALOG.abilities.get(live.cards[targeting.cardId].abilityId)?.name}» من الأبطال بالأسفل
-          <button className="btn btn-ghost btn-small" onClick={() => setTargeting(null)}>
-            إلغاء
-          </button>
-        </div>
-      ) : null}
+      </BossBanner>
 
-      {/* 4 — يد القدرات */}
-      <HandPager
-        items={playing && exec ? [...hand] : hand}
-        render={(id) => {
-          const a = CATALOG.abilities.get(shownState.cards[id].abilityId)!;
-          const idx = shownPlan.findIndex((p) => p.cardId === id);
-          const planned = idx >= 0;
-          const tooCostly = !planned && (a.cost ?? 0) > remaining;
-          return (
-            <HandCard
-              abilityId={a.id}
-              name={a.name}
-              image={displayUrl(a.image)}
-              cost={a.cost ?? 0}
-              planned={planned ? idx + 1 : null}
-              dim={tooCostly || locked}
-              onSelect={() => selectCard(id)}
-              onZoom={() => openOverlay({ kind: 'card', abilityId: a.id, cardId: id })}
+      <div className="arena-body">
+        {/* 2 — حركات الزعيم الثلاث: 1 يمينًا، 2 وسطًا، 3 يسارًا */}
+        <section className="boss-moves" data-testid="boss-moves" aria-label="حركات الزعيم">
+          {bossPlan.map((b, k) => (
+            <BossMoveCard
+              key={k}
+              k={k}
+              abilityId={visibleMove(k) ? b.abilityId : null}
+              flipIn={b.hidden}
+              active={view?.activeSlot === k}
+              done={!!view?.doneSlots.includes(k)}
+              inspected={mode.kind === 'boss' && mode.k === k}
+              onTap={() => tapBoss(k)}
+              onZoom={() => zoomBoss(k)}
             />
-          );
-        }}
-      />
+          ))}
+        </section>
 
-      {/* 5 — الأبطال الخمسة */}
-      <section className="heroes-row" data-testid="heroes-row" aria-label="الأبطال">
-        {board.heroes.map((h) => (
-          <HeroToken
-            key={h.slot}
-            unit={h}
-            wins={wins[h.heroId] ?? 0}
-            selectable={!!targeting && targetLegal.includes(h.slot)}
-            dimmed={!!targeting && !targetLegal.includes(h.slot)}
-            onSelect={() => chooseTarget(h.slot)}
-            onDetails={() => setDetail(h.slot)}
-          />
-        ))}
-      </section>
+        {/* 3 — الخطة: من اليسار فعليًا: تنفيذ | خانة3 | خانة2 | خانة1 | الطاقة */}
+        <section className="plan-row" data-testid="plan-row" aria-label="خطة اللاعب">
+          <div className="energy-bar" data-testid="energy" role="meter" aria-valuemin={0} aria-valuemax={ENERGY_PER_ROUND} aria-valuenow={remaining} aria-label={`الطاقة المتاحة ${remaining} من ${ENERGY_PER_ROUND}`}>
+            <Icon name="bolt" size={18} />
+            <span className="en-num">
+              <Num>
+                {remaining}/{ENERGY_PER_ROUND}
+              </Num>
+            </span>
+            <span className="en-pips" aria-hidden="true">
+              {Array.from({ length: ENERGY_PER_ROUND }, (_, i) => (
+                <i key={i} className={i < remaining ? 'on' : ''} />
+              ))}
+            </span>
+          </div>
+          {Array.from({ length: PLAN_SLOTS }, (_, k) => {
+            const p = shownPlan[k];
+            const ghost = !p && pendingCard && k === shownPlan.length ? pendingCard : null;
+            const cardId = p?.cardId ?? ghost;
+            const a = cardId ? CATALOG.abilities.get(shownState.cards[cardId].abilityId) : undefined;
+            const targetHero = p?.target !== undefined ? shownState.heroes[p.target] : undefined;
+            return (
+              <PlanSlot
+                key={k}
+                k={k}
+                abilityId={a?.id ?? null}
+                name={a?.name ?? ''}
+                ghost={!!ghost}
+                targetImg={targetHero ? displayUrl(heroImageForLevel(CATALOG.heroById.get(targetHero.heroId)!, cosmeticLevel(wins[targetHero.heroId] ?? 0))) : null}
+                targetName={targetHero ? heroShortName(targetHero.heroId) : null}
+                selected={selSlot === k}
+                moveTarget={selSlot !== null && selSlot !== k && k < shownPlan.length}
+                active={view?.activeSlot === k}
+                done={!!view?.doneSlots.includes(k)}
+                locked={locked}
+                onTap={() => tapSlot(k)}
+                onZoom={() => (p && a ? openOverlay({ kind: 'card', abilityId: a.id, cardId: p.cardId, target: p.target }) : a ? openOverlay({ kind: 'card', abilityId: a.id }) : undefined)}
+                onRemove={() => (ghost ? setModeNow(IDLE) : removeSlot(k))}
+              />
+            );
+          })}
+          <button className={`exec-btn ${busy ? 'busy' : ''}`} onClick={() => void execute()} disabled={!canExecute} data-testid="execute" aria-label={plan.length ? 'تنفيذ الجولة' : 'تنفيذ: ضع بطاقة واحدة على الأقل في الخطة'} title={planError ?? undefined}>
+            <Icon name="swords" size={20} />
+            <span className="exec-label">تنفيذ</span>
+          </button>
+        </section>
+
+        {/* 4 — يد القدرات: أربع بطاقات ظاهرة، والسحب يكشف الباقي */}
+        <HandPager
+          items={hand}
+          resetKey={`${live.round}:${playing ? 'play' : 'plan'}`}
+          render={(id) => {
+            const a = CATALOG.abilities.get(shownState.cards[id].abilityId)!;
+            const idx = shownPlan.findIndex((p) => p.cardId === id);
+            const planned = idx >= 0;
+            const tooCostly = !planned && (a.cost ?? 0) > remaining;
+            return (
+              <HandCard
+                abilityId={a.id}
+                name={a.name}
+                cost={a.cost ?? 0}
+                tint={abilityTint(a.id)}
+                planned={planned ? idx + 1 : null}
+                pending={pendingCard === id}
+                dim={tooCostly || locked}
+                onSelect={() => selectCard(id)}
+                onZoom={() => openOverlay({ kind: 'card', abilityId: a.id, cardId: id, target: planned ? shownPlan[idx].target : undefined })}
+              />
+            );
+          }}
+        />
+
+        {/* 5 — الأبطال الخمسة في خانات أدوارهم */}
+        <section className="heroes-row" data-testid="heroes-row" aria-label="الأبطال">
+          {hint ? (
+            <p className="mode-hint" role="status">
+              {hint}
+            </p>
+          ) : null}
+          {board.heroes.map((h) => (
+            <HeroToken key={h.slot} unit={h} wins={wins[h.heroId] ?? 0} mark={heroMark(h.slot)} onTap={() => tapHero(h.slot)} />
+          ))}
+        </section>
+      </div>
 
       {view?.zoom ? (
         <div className="pair-zoom" aria-hidden="true">
-          {view.zoom.player ? <img src={displayUrl(CATALOG.abilities.get(view.zoom.player)!.image)} alt="" /> : <div className="pair-empty">—</div>}
+          {view.zoom.player ? (
+            <span className={`pz-card ${tintClass(abilityTint(view.zoom.player))}`}>
+              <img src={displayUrl(CATALOG.abilities.get(view.zoom.player)!.image)} alt="" />
+            </span>
+          ) : (
+            <span className="pz-card pair-empty">—</span>
+          )}
           <span className="vs">VS</span>
-          <img src={displayUrl(CATALOG.abilities.get(view.zoom.boss)!.image)} alt="" />
+          <span className="pz-card role-boss">
+            <img src={displayUrl(CATALOG.abilities.get(view.zoom.boss)!.image)} alt="" />
+          </span>
         </div>
       ) : null}
       {view?.banner ? <div className="arena-banner">{view.banner}</div> : null}
+
+      {menuOpen ? (
+        <ArenaMenu
+          data={data}
+          reducedMotion={reducedMotion}
+          playing={playing}
+          locked={locked}
+          cycle={executedThisCycle}
+          onClose={() => setMenuOpen(false)}
+          onPass={() => void passRound()}
+          onRetreat={() => void doRetreat()}
+          onSkip={() => {
+            setMenuOpen(false);
+            void skipPlayback();
+          }}
+          onLeave={() => {
+            setMenuOpen(false);
+            goto('challenges');
+          }}
+        />
+      ) : null}
+
+      {hiddenZoom !== null ? (
+        <Sheet title={`حركة الزعيم ${hiddenZoom + 1}`} onClose={() => setHiddenZoom(null)} className="hidden-zoom">
+          <div className="hz">
+            <CardBack big />
+            <p>هذه الحركة لم تُكشف بعد. تنكشف لحظة تنفيذ الخانة {hiddenZoom + 1}، ولا يمكن معرفة البطاقة أو هدفها قبل ذلك.</p>
+          </div>
+        </Sheet>
+      ) : null}
+
       {detail !== null ? (
         <Sheet
           title={detail === 'boss' ? (CATALOG.bossById.get(board.boss.bossId)?.name ?? '') : (CATALOG.heroById.get(board.heroes[detail].heroId)?.name ?? '')}
@@ -509,69 +664,187 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
   );
 }
 
+function CardBack({ big }: { big?: boolean }) {
+  return (
+    <span className={`card-back ${big ? 'big' : ''}`} aria-hidden="true">
+      <span className="cb-ring" />
+      <span className="cb-q">؟</span>
+    </span>
+  );
+}
+
+function BossMoveCard({
+  k,
+  abilityId,
+  flipIn,
+  active,
+  done,
+  inspected,
+  onTap,
+  onZoom,
+}: {
+  k: number;
+  /** null ما دامت الحركة مخفية: لا يصل معرّفها إلى الواجهة إطلاقًا. */
+  abilityId: string | null;
+  flipIn: boolean;
+  active: boolean;
+  done: boolean;
+  inspected: boolean;
+  onTap: () => void;
+  onZoom: () => void;
+}) {
+  const tap = useTap(onTap, onZoom);
+  const a = abilityId ? CATALOG.abilities.get(abilityId) : undefined;
+  return (
+    <div className={`bmove ${a ? 'role-boss' : 'role-hidden'} ${active ? 'active' : ''} ${done ? 'done' : ''} ${inspected ? 'inspected' : ''}`} data-slot={k + 1} style={{ gridArea: `b${k + 1}` }}>
+      <button
+        type="button"
+        className={`card-img-btn ${a && flipIn ? 'flip-in' : ''}`}
+        {...tap}
+        aria-label={a ? `حركة الزعيم ${k + 1}: ${a.name}. لمسة لإظهار أهدافها، ولمستان للتكبير` : `حركة الزعيم ${k + 1}: غير مكشوفة بعد`}
+        aria-pressed={a ? inspected : undefined}
+      >
+        {a ? <img src={displayUrl(a.image)} alt={a.name} draggable={false} /> : <CardBack />}
+      </button>
+      <span className="slot-no" aria-hidden="true">
+        <Num>{k + 1}</Num>
+      </span>
+      <button className="sr-zoom" onClick={onZoom} aria-label={a ? `تكبير ${a.name}` : `تكبير حركة الزعيم ${k + 1} المخفية`}>
+        <Icon name="zoom" size={14} />
+      </button>
+    </div>
+  );
+}
+
+function PlanSlot({
+  k,
+  abilityId,
+  name,
+  ghost,
+  targetImg,
+  targetName,
+  selected,
+  moveTarget,
+  active,
+  done,
+  locked,
+  onTap,
+  onZoom,
+  onRemove,
+}: {
+  k: number;
+  abilityId: string | null;
+  name: string;
+  ghost: boolean;
+  targetImg: string | null;
+  targetName: string | null;
+  selected: boolean;
+  moveTarget: boolean;
+  active: boolean;
+  done: boolean;
+  locked: boolean;
+  onTap: () => void;
+  onZoom: () => void;
+  onRemove: () => void;
+}) {
+  const tap = useTap(onTap, onZoom);
+  const filled = !!abilityId && !ghost;
+  const tint = abilityId ? abilityTint(abilityId) : null;
+  return (
+    <div
+      className={`pslot ${filled ? 'filled' : ghost ? 'ghost' : 'vacant'} ${tint ? tintClass(tint) : ''} ${selected ? 'selected' : ''} ${moveTarget ? 'move-target' : ''} ${active ? 'active' : ''} ${done ? 'done' : ''}`}
+      data-slot={k + 1}
+      data-ability={filled ? (abilityId ?? undefined) : undefined}
+      style={{ gridArea: `s${k + 1}` }}
+    >
+      <button
+        type="button"
+        className="card-img-btn"
+        {...tap}
+        aria-pressed={filled ? selected : undefined}
+        aria-label={
+          filled
+            ? `الخانة ${k + 1}: ${name}${targetName ? `، الهدف ${targetName}` : ''}. لمسة لتحديدها ثم نقلها أو تغيير هدفها، ولمستان للتكبير`
+            : ghost
+              ? `الخانة ${k + 1}: ${name} بانتظار اختيار الهدف`
+              : moveTarget
+                ? `انقل البطاقة المحددة إلى الخانة ${k + 1}`
+                : `الخانة ${k + 1} فارغة`
+        }
+      >
+        {abilityId ? <img src={displayUrl(CATALOG.abilities.get(abilityId)!.image)} alt={name} draggable={false} /> : <span className="slot-orn" aria-hidden="true" />}
+        {ghost ? <span className="ghost-cap">اختر الهدف</span> : null}
+      </button>
+      <span className="slot-no" aria-hidden="true">
+        <Num>{k + 1}</Num>
+      </span>
+      {targetImg ? (
+        <span className="slot-target" title={targetName ?? undefined} aria-hidden="true">
+          <img src={targetImg} alt="" draggable={false} />
+        </span>
+      ) : null}
+      {(filled || ghost) && !locked ? (
+        <button
+          type="button"
+          className="slot-x"
+          aria-label={ghost ? `إلغاء اختيار ${name}` : `إزالة ${name} من الخانة ${k + 1}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+        >
+          <Icon name="close" size={12} />
+        </button>
+      ) : null}
+      {filled ? (
+        <button className="sr-zoom" onClick={onZoom} aria-label={`تكبير ${name}`}>
+          <Icon name="zoom" size={14} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function HandCard({
   abilityId,
   name,
-  image,
   cost,
+  tint,
   planned,
+  pending,
   dim,
   onSelect,
   onZoom,
 }: {
   abilityId: string;
   name: string;
-  image: string;
   cost: number;
+  tint: Tint;
   planned: number | null;
+  pending: boolean;
   dim: boolean;
   onSelect: () => void;
   onZoom: () => void;
 }) {
-  const timer = useRef<number | null>(null);
-  const longPressed = useRef(false);
-  const startPos = useRef<{ x: number; y: number } | null>(null);
-  const clear = () => {
-    if (timer.current) window.clearTimeout(timer.current);
-    timer.current = null;
-  };
+  const tap = useTap(onSelect, onZoom);
   return (
-    <div className={`hand-card ${planned ? 'planned' : ''} ${dim ? 'dim' : ''}`} data-ability={abilityId}>
+    <div className={`hand-card ${tintClass(tint)} ${planned ? 'planned' : ''} ${pending ? 'pending' : ''} ${dim ? 'dim' : ''}`} data-ability={abilityId}>
       <button
+        type="button"
         className="card-img-btn"
-        aria-label={`${name} — ${cost} طاقة${planned ? ` — في الخانة ${planned}` : ''}`}
-        aria-pressed={!!planned}
-        onPointerDown={(e) => {
-          longPressed.current = false;
-          startPos.current = { x: e.clientX, y: e.clientY };
-          clear();
-          timer.current = window.setTimeout(() => {
-            longPressed.current = true;
-            onZoom();
-          }, 520);
-        }}
-        onPointerMove={(e) => {
-          if (startPos.current && Math.hypot(e.clientX - startPos.current.x, e.clientY - startPos.current.y) > 10) clear();
-        }}
-        onPointerUp={clear}
-        onPointerCancel={clear}
-        onContextMenu={(e) => e.preventDefault()}
-        onClick={() => {
-          if (longPressed.current) {
-            longPressed.current = false;
-            return;
-          }
-          onSelect();
-        }}
+        {...tap}
+        aria-label={`${name} — ${cost} طاقة${planned ? ` — في الخانة ${planned}` : ''}. لمسة للاختيار، ولمستان للتكبير`}
+        aria-pressed={!!planned || pending}
       >
-        <img src={image} alt={name} draggable={false} />
+        <img src={displayUrl(CATALOG.abilities.get(abilityId)!.image)} alt={name} draggable={false} />
         {planned ? (
           <span className="plan-badge">
             <Num>{planned}</Num>
           </span>
         ) : null}
       </button>
-      <button className="zoom-btn" onClick={onZoom} aria-label={`تكبير ${name}`}>
+      <button className="sr-zoom" onClick={onZoom} aria-label={`تكبير ${name}`}>
         <Icon name="zoom" size={14} />
       </button>
     </div>

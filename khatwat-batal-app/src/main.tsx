@@ -4,6 +4,7 @@ import '@fontsource/tajawal/700.css';
 import '@fontsource/tajawal/800.css';
 import './styles/app.css';
 import './styles/battle.css';
+import './styles/arena.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './ui/App';

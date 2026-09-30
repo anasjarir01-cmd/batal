@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
-import { addChallenge, addReward, closeSheet, completeFirst, makeWav, openSettings, profile, setVisibility, startBattle } from './helpers';
+import { addChallenge, addReward, closeSheet, completeFirst, leaveArena, makeWav, openSettings, passRound, profile, setVisibility, startBattle } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -60,7 +60,8 @@ test('العمل دون إنترنت بعد إعادة تحميل فعلية: ا
   expect(imgs.length).toBeGreaterThan(10);
   expect(imgs.every(Boolean)).toBe(true);
 
-  // موسيقى محلية دون شبكة
+  // موسيقى محلية دون شبكة (الإعدادات العامة من صفحات التطبيق؛ المعركة تبقى محفوظة)
+  await leaveArena(page);
   await openSettings(page, 'الموسيقى');
   await page.getByTestId('music-input').setInputFiles({ name: 'song.wav', mimeType: 'audio/wav', buffer: makeWav() });
   await expect(page.locator('.tracks li')).toHaveCount(1);
@@ -115,9 +116,7 @@ test('النسخ الاحتياطي: تصدير → بيئة جديدة فارغ
   await expect(page.locator('.tracks li')).toHaveCount(1);
   await closeSheet(page);
   await startBattle(page, 'fenrir');
-  await page.getByTestId('execute').click();
-  await page.getByRole('button', { name: 'تمرير', exact: true }).click();
-  await page.getByRole('button', { name: 'تخطي العرض' }).click();
+  await passRound(page);
   await expect(page.getByTestId('arena')).not.toHaveClass(/is-playing/);
   const before = await page.evaluate(() => new Promise((res) => {
     const r = indexedDB.open('khatwat-batal');
@@ -127,6 +126,7 @@ test('النسخ الاحتياطي: تصدير → بيئة جديدة فارغ
     };
   }));
   expect(before).toBe(2);
+  await leaveArena(page);
   await openSettings(page, 'البيانات');
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'تصدير نسخة' }).click()]);
   const file = await download.path();

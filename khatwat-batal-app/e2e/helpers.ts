@@ -117,3 +117,57 @@ export async function touchSwipe(page: Page, x1: number, y: number, x2: number) 
   await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await client.detach();
 }
+
+/** بيئة اختبار: وضع بطاقات محددة أول اليد (بتعديل الحالة المحفوظة) ثم إعادة التحميل. */
+export async function putCardsFirst(page: Page, cardIds: string[]) {
+  await page.evaluate(
+    (ids) =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open('khatwat-batal');
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('battle', 'readwrite');
+          const st = tx.objectStore('battle');
+          const g = st.get('current');
+          g.onsuccess = () => {
+            const rec = g.result;
+            const s = rec.state;
+            const pool = [...s.hand, ...s.draw].filter((x: string) => !ids.includes(x));
+            const size = s.hand.length;
+            s.hand = [...ids, ...pool.slice(0, size - ids.length)];
+            s.draw = [...pool.slice(size - ids.length), ...s.draw.filter((x: string) => !pool.includes(x) && !ids.includes(x))];
+            s.discard = s.discard.filter((x: string) => !ids.includes(x));
+            st.put(rec);
+          };
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => reject(tx.error);
+        };
+      }),
+    cardIds,
+  );
+  await page.reload();
+  await page.getByTestId('arena').waitFor();
+}
+
+export async function openArenaMenu(page: Page) {
+  await page.getByTestId('arena-menu-btn').click();
+  await page.getByRole('dialog', { name: 'قائمة المعركة' }).waitFor();
+}
+
+/** تمرير الجولة من قائمة الترس مع التأكيد، ثم تخطي العرض إن ظهر. */
+export async function passRound(page: Page) {
+  await openArenaMenu(page);
+  await page.getByRole('button', { name: 'تمرير الجولة' }).click();
+  await page.getByRole('button', { name: 'تمرير', exact: true }).click();
+  await page.getByRole('button', { name: 'تخطي العرض' }).click({ timeout: 5000 }).catch(() => undefined);
+}
+
+/** الخروج من الساحة إلى صفحات التطبيق (المعركة تبقى محفوظة). */
+export async function leaveArena(page: Page) {
+  await openArenaMenu(page);
+  await page.getByRole('button', { name: 'العودة إلى صفحات التطبيق' }).click();
+  await page.locator('.tabbar').waitFor();
+}

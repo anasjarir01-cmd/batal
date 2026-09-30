@@ -9,7 +9,7 @@ export const BOSSES: BossDef[] = [
     title: 'الذئب الذي كسر القيد',
     maxHp: 640,
     image: 'assets/starting-portraits/fenrir.png',
-    bannerPosition: '50% 36%',
+    bannerPosition: '50% 32%',
     abilityIds: ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9'],
     phase2Rule: 'lowest-ratio-two',
     phase2Text:
@@ -26,7 +26,7 @@ export const BOSSES: BossDef[] = [
     title: 'ناسجة المرايا',
     maxHp: 720,
     image: 'assets/starting-portraits/yorigumo.png',
-    bannerPosition: '50% 20%',
+    bannerPosition: '50% 10%',
     abilityIds: ['Y1', 'Y2', 'Y3', 'Y4', 'Y5', 'Y6', 'Y7', 'Y8', 'Y9'],
     phase2Rule: 'poisoned',
     phase2Text:
