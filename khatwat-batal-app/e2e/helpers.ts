@@ -1,0 +1,119 @@
+import type { Page } from '@playwright/test';
+
+export const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
+
+/** ملف WAV صغير (موجة جيبية) لاختبار الموسيقى المحلية. */
+export function makeWav(seconds = 12, rate = 8000): Buffer {
+  const n = seconds * rate;
+  const buf = Buffer.alloc(44 + n * 2);
+  buf.write('RIFF', 0);
+  buf.writeUInt32LE(36 + n * 2, 4);
+  buf.write('WAVE', 8);
+  buf.write('fmt ', 12);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(1, 22);
+  buf.writeUInt32LE(rate, 24);
+  buf.writeUInt32LE(rate * 2, 28);
+  buf.writeUInt16LE(2, 32);
+  buf.writeUInt16LE(16, 34);
+  buf.write('data', 36);
+  buf.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) buf.writeInt16LE(Math.round(Math.sin((i / rate) * 2 * Math.PI * 440) * 3000), 44 + i * 2);
+  return buf;
+}
+
+/** قراءة سجل من IndexedDB الخاص بالتطبيق داخل الصفحة. */
+export function idbGet<T = unknown>(page: Page, store: string, key: string): Promise<T> {
+  return page.evaluate(
+    ([s, k]) =>
+      new Promise<T>((resolve, reject) => {
+        const req = indexedDB.open('khatwat-batal');
+        req.onsuccess = () => {
+          const db = req.result;
+          const q = db.transaction(s).objectStore(s).get(k);
+          q.onsuccess = () => {
+            resolve(q.result as T);
+            db.close();
+          };
+          q.onerror = () => reject(q.error);
+        };
+        req.onerror = () => reject(req.error);
+      }),
+    [store, key] as const,
+  );
+}
+
+export async function profile(page: Page) {
+  return idbGet<{ xp: number; coins: number; gems: number }>(page, 'profile', 'main');
+}
+
+export async function setVisibility(page: Page, state: 'hidden' | 'visible') {
+  await page.evaluate((st) => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => st });
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => st === 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, state);
+}
+
+export async function openSettings(page: Page, section: string) {
+  await page.getByRole('button', { name: 'الإعدادات' }).click();
+  await page.getByRole('tab', { name: section }).click();
+}
+
+export async function closeSheet(page: Page) {
+  await page.getByRole('button', { name: 'إغلاق' }).first().click();
+}
+
+export async function addChallenge(page: Page, name: string, difficulty: string, once = false, withImage = false) {
+  await openSettings(page, 'التحديات');
+  await page.getByRole('button', { name: 'تحدٍّ جديد' }).click();
+  await page.getByPlaceholder('مثال: قراءة 10 صفحات').fill(name);
+  if (withImage) {
+    await page.getByTestId('challenge-image-input').setInputFiles({ name: 'c.png', mimeType: 'image/png', buffer: PNG_1PX });
+    await page.locator('.picker-preview').and(page.locator('img')).waitFor();
+  }
+  await page.locator('.editor select').selectOption(difficulty);
+  if (once) await page.getByLabel('مرة واحدة').check();
+  await page.getByRole('button', { name: 'حفظ' }).click();
+  await page.getByRole('button', { name: 'تحدٍّ جديد' }).waitFor();
+  await closeSheet(page);
+}
+
+export async function addReward(page: Page, name: string, price: number, once = false) {
+  await openSettings(page, 'الجوائز');
+  await page.getByRole('button', { name: 'جائزة جديدة' }).click();
+  await page.getByPlaceholder('مثال: فيلم في السينما').fill(name);
+  await page.locator('.editor input[inputmode=numeric]').fill(String(price));
+  if (once) await page.getByLabel('مرة واحدة').check();
+  await page.getByRole('button', { name: 'حفظ' }).click();
+  await page.getByRole('button', { name: 'جائزة جديدة' }).waitFor();
+  await closeSheet(page);
+}
+
+export async function completeFirst(page: Page, name: string) {
+  const card = page.locator('.challenge', { hasText: name });
+  await card.getByRole('button', { name: 'كمّلت' }).click();
+  await page.getByRole('button', { name: 'نعم، كمّلت' }).click();
+  await card.locator('.done-badge').or(page.locator('.done-list')).first().waitFor();
+}
+
+export async function startBattle(page: Page, boss: 'fenrir' | 'yorigumo' = 'fenrir') {
+  await page.getByRole('button', { name: 'القتال' }).click();
+  await page.getByRole('button', { name: 'اختيار الكل' }).click();
+  await page.getByTestId('confirm-team').click();
+  await page.getByTestId(`pick-${boss}`).click({ timeout: 10_000 });
+  await page.getByTestId('arena').waitFor();
+}
+
+/** سحب لمسي حقيقي عبر CDP (touchStart/Move/End). */
+export async function touchSwipe(page: Page, x1: number, y: number, x2: number) {
+  const client = await page.context().newCDPSession(page);
+  await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x1, y }] });
+  const steps = 8;
+  for (let i = 1; i <= steps; i++) {
+    await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x1 + ((x2 - x1) * i) / steps, y }] });
+  }
+  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await client.detach();
+}

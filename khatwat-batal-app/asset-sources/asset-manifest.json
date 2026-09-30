@@ -1,0 +1,339 @@
+{
+  "pngCount": 65,
+  "requiredArchives": [
+    "01-hayato.zip",
+    "02-nuba.zip",
+    "03-skadi.zip",
+    "04-eir.zip",
+    "05-zhuge.zip",
+    "06-fenrir.zip",
+    "07-yorigumo.zip"
+  ],
+  "files": [
+    {
+      "path": "assets/hayato-complete-pack/hayato-H1.png",
+      "bytes": 2039893,
+      "sha256": "3cb9b9f6a2ad85d081d95429cf9915b0f6c4ae9b18287a100576d4316479e72b"
+    },
+    {
+      "path": "assets/hayato-complete-pack/hayato-H2.png",
+      "bytes": 1966372,
+      "sha256": "fb52926af4a776fcca624b76d5c83b804eff02c847edfb425ad9819ff8f24380"
+    },
+    {
+      "path": "assets/hayato-complete-pack/hayato-H3.png",
+      "bytes": 2039148,
+      "sha256": "97731f0dfcb740fceafd0977eb877cf66ef06667b7938bf74b13f31ff3a52a34"
+    },
+    {
+      "path": "assets/hayato-complete-pack/hayato-H4.png",
+      "bytes": 2006559,
+      "sha256": "e4a5f57c674e920c3a0bbcda761c211f4f111c5e01cd59cb8a2395ad024c7621"
+    },
+    {
+      "path": "assets/hayato-complete-pack/hayato-level-2.png",
+      "bytes": 3628095,
+      "sha256": "c4e84adf1700cccd9dec6982daffc7bd552f8706c366fa5091dcac9debb160fb"
+    },
+    {
+      "path": "assets/hayato-complete-pack/hayato-level-3.png",
+      "bytes": 3917954,
+      "sha256": "166ef9722fdca1dae027f1eaf86e8c68e2592f61ff1b6a77175fc40f75141ea4"
+    },
+    {
+      "path": "assets/hayato-complete-pack/hayato-level-4.png",
+      "bytes": 3799860,
+      "sha256": "ddf1d2e18200c93f221808633919c242b9af354f55e5a1b1df7bf48328ee4c19"
+    },
+    {
+      "path": "assets/hayato-complete-pack/hayato-level-5.png",
+      "bytes": 3835629,
+      "sha256": "412e2dd4e937ac821e72f6461cd91aeaf67087d4949f0697a0fcf966667478e1"
+    },
+    {
+      "path": "assets/starting-portraits/hayato.png",
+      "bytes": 3042606,
+      "sha256": "f080349eda867d890041038c0a900a470edcb6fd74acad96fb567619d11a8154"
+    },
+    {
+      "path": "assets/nuba-complete-pack-gallery/nuba-level-2.png",
+      "bytes": 3019013,
+      "sha256": "498816e7fa02d2cced3b7baea737a4c3c96e8cd6ffcc704264b72172fa7a7f17"
+    },
+    {
+      "path": "assets/nuba-complete-pack-gallery/nuba-level-3.png",
+      "bytes": 2853030,
+      "sha256": "69e9c9f1697fdd2fbea214e025d1ea7fba778f0d256d1cb648d227c5aee475b5"
+    },
+    {
+      "path": "assets/nuba-complete-pack-gallery/nuba-level-4.png",
+      "bytes": 3144588,
+      "sha256": "1b16f6173ed1bde141f37b48721cde4a0f4a0a8f1166a9cb7d3587972a5702db"
+    },
+    {
+      "path": "assets/nuba-complete-pack-gallery/nuba-level-5.png",
+      "bytes": 3137530,
+      "sha256": "9fce3a09c8b2f3e157c33f02f90479e798e1e6dbd74817dcebddafb39d374b4b"
+    },
+    {
+      "path": "assets/nuba-complete-pack-gallery/nuba-N1.png",
+      "bytes": 2923910,
+      "sha256": "ca426c3caa850be5e2c847f86a3df3584e305150288942b027f80dc597bd3416"
+    },
+    {
+      "path": "assets/nuba-complete-pack-gallery/nuba-N2.png",
+      "bytes": 3394474,
+      "sha256": "f5a11fa243ba915dcb4268c64e63807c4ac6c3150db7416261c91b0caabc13bc"
+    },
+    {
+      "path": "assets/nuba-complete-pack-gallery/nuba-N3.png",
+      "bytes": 3433161,
+      "sha256": "d256922ad360ea1d5d97ae9d8c7614b09e42b2078f040076bd949fcb8f512015"
+    },
+    {
+      "path": "assets/nuba-complete-pack-gallery/nuba-N4.png",
+      "bytes": 3210751,
+      "sha256": "9c3c623b1491f1cfad30f68465e1336c7fe43c1404f01b194a5a1ad58835be7c"
+    },
+    {
+      "path": "assets/starting-portraits/nuba.png",
+      "bytes": 2922627,
+      "sha256": "12fca18aeec3bb5ff7e325e453113ff3c9823cdb3998b0d59d0698c34a3b46d5"
+    },
+    {
+      "path": "assets/skadi-complete-pack/skadi-level-2.png",
+      "bytes": 3041240,
+      "sha256": "4e8eced08e1feef3b00754d670bf0195304da20d99438ea4e4b205c0ffcb5b8b"
+    },
+    {
+      "path": "assets/skadi-complete-pack/skadi-level-3.png",
+      "bytes": 3164759,
+      "sha256": "a397f18b7c7b8e9ab17617e8b0c26e66b92715c2da88263ff706167ac4da0506"
+    },
+    {
+      "path": "assets/skadi-complete-pack/skadi-level-4.png",
+      "bytes": 3369875,
+      "sha256": "ebc1d4f39a6b0d99e38b1bb7a5b4d151a9a8cd2b440e8aebcd554535283d6fff"
+    },
+    {
+      "path": "assets/skadi-complete-pack/skadi-level-5.png",
+      "bytes": 3320631,
+      "sha256": "44b784fea49a4edb6892128b1bb9fff811a4ff096297999107638301f4dc6280"
+    },
+    {
+      "path": "assets/skadi-complete-pack/skadi-S1.png",
+      "bytes": 1969169,
+      "sha256": "974e330238bb91ff656403adac56753633951af6950390228c121f8499047152"
+    },
+    {
+      "path": "assets/skadi-complete-pack/skadi-S2.png",
+      "bytes": 1838670,
+      "sha256": "8950bfd5fee224339454b5b844c109f3047be3903dc09308cb75dd0d66c85107"
+    },
+    {
+      "path": "assets/skadi-complete-pack/skadi-S3.png",
+      "bytes": 1921739,
+      "sha256": "47086a47ee57d7d91f13283df75240b093aab7c3419db8b073f54aef5d24f02b"
+    },
+    {
+      "path": "assets/skadi-complete-pack/skadi-S4.png",
+      "bytes": 2107645,
+      "sha256": "32d76c68f8ca40a245eb0aedcb5df9d779788343c69d463013165696620375a8"
+    },
+    {
+      "path": "assets/starting-portraits/skadi.png",
+      "bytes": 3202314,
+      "sha256": "07e1f4a76770f8143f9f5b54ba674806354cc8b5187f8d0b7598943497bae4fa"
+    },
+    {
+      "path": "assets/eir-complete-pack/eir-E1.png",
+      "bytes": 1642226,
+      "sha256": "3af4b6cd85fe0ae72d2144ee4782229df3d9f7ec689a456efef5fe4514ab814d"
+    },
+    {
+      "path": "assets/eir-complete-pack/eir-E2.png",
+      "bytes": 1688109,
+      "sha256": "47c3c3a6a5f55b2e8b1cad7d3f870f9e0e98b0494b4316d6dfb5a7e3ace412fb"
+    },
+    {
+      "path": "assets/eir-complete-pack/eir-E3.png",
+      "bytes": 1673565,
+      "sha256": "de848cf15b7b9aa0107e5e4ba33d8b161e6bcb8ef971641784f544311c944b1e"
+    },
+    {
+      "path": "assets/eir-complete-pack/eir-E4.png",
+      "bytes": 1698646,
+      "sha256": "9b00a9fa2d6cd9cc2d952e563216d6cb3f26f0aac91ad0eeee7dc0c4857b9adb"
+    },
+    {
+      "path": "assets/eir-complete-pack/eir-level-2.png",
+      "bytes": 2887157,
+      "sha256": "4a2b4d2e08d456d91fb6d84805b17d740577753ed3fb5e4c568fc2c6522d213c"
+    },
+    {
+      "path": "assets/eir-complete-pack/eir-level-3.png",
+      "bytes": 3092321,
+      "sha256": "0e9878cf62e4bb02dda23b60b7ebd77c0ff2377d5aa7ffa4833356d9ec2a8047"
+    },
+    {
+      "path": "assets/eir-complete-pack/eir-level-4.png",
+      "bytes": 3039900,
+      "sha256": "586ff5bccc2997ae1a18c6f4a836fc1b414dce224f25d1b27dfe6069529669c9"
+    },
+    {
+      "path": "assets/eir-complete-pack/eir-level-5.png",
+      "bytes": 3044569,
+      "sha256": "7e318180a2153702f26a8a331414ac75a4512647785ed4979c7c438a05d8a394"
+    },
+    {
+      "path": "assets/starting-portraits/eir.png",
+      "bytes": 3091579,
+      "sha256": "00729062f655c0913adc9bbd156df6ad127ebd6c9bd75d1eafb430c5e54a8bec"
+    },
+    {
+      "path": "assets/zhuge-complete-pack/zhuge-level-2.png",
+      "bytes": 2917355,
+      "sha256": "97a3a2c6bf65af9ecb94153fa27284b1bf436bb6413549f718a691c2d296345d"
+    },
+    {
+      "path": "assets/zhuge-complete-pack/zhuge-level-3.png",
+      "bytes": 2812134,
+      "sha256": "0a85612f8b22e40b5a29d078eeb96bd8c145e72fba6362843363e42678b0958d"
+    },
+    {
+      "path": "assets/zhuge-complete-pack/zhuge-level-4.png",
+      "bytes": 2908785,
+      "sha256": "c5a601c24e861b02c82a97e8f5bcb807caf84f76abace2d742849ee0f40bee49"
+    },
+    {
+      "path": "assets/zhuge-complete-pack/zhuge-level-5.png",
+      "bytes": 3104788,
+      "sha256": "89896a567386f0fc775804fbd0a104a5a3142747fc5784960d77aa6e71b67780"
+    },
+    {
+      "path": "assets/zhuge-complete-pack/zhuge-Z1.png",
+      "bytes": 1592069,
+      "sha256": "52f7ae0193906158ed33cf653bafb444a175ce38abcbb32f81548d3350c0a9ef"
+    },
+    {
+      "path": "assets/zhuge-complete-pack/zhuge-Z2.png",
+      "bytes": 1678490,
+      "sha256": "69a6b40a4955c4de7167a545c02ad818548d06a65fcea417e383bea9041aa5f8"
+    },
+    {
+      "path": "assets/zhuge-complete-pack/zhuge-Z3.png",
+      "bytes": 1634015,
+      "sha256": "69c16902b08dfef249f8a9f19ee5db1215a6bc0ec12ee93cdf7e5f4dcc5cda9c"
+    },
+    {
+      "path": "assets/zhuge-complete-pack/zhuge-Z4.png",
+      "bytes": 1777330,
+      "sha256": "3495257c012974d592567e6ef07486c2e8bcf22e1fd1186da804d0c98399f5d9"
+    },
+    {
+      "path": "assets/starting-portraits/zhuge.png",
+      "bytes": 2833428,
+      "sha256": "1b13ef3780c5196fff31e2596b3c013f5d00f47c08635c7d969af6d40d0c74af"
+    },
+    {
+      "path": "assets/fenrir-complete-pack/fenrir-F1.png",
+      "bytes": 1518064,
+      "sha256": "190bf59a9bd1f20391b41f2fbde7551810c186ca3f5b7c84e87685cf1bf56884"
+    },
+    {
+      "path": "assets/fenrir-complete-pack/fenrir-F2.png",
+      "bytes": 1541899,
+      "sha256": "d3a6ec604d20241e26d1cd6d5b1781df7ab71aa49b6dc70f92ab42a883883db2"
+    },
+    {
+      "path": "assets/fenrir-complete-pack/fenrir-F3.png",
+      "bytes": 1601708,
+      "sha256": "f7b0718c7b108881d137a0a14ab08f6f38645d7cfd75c208e21b9b0623969cc6"
+    },
+    {
+      "path": "assets/fenrir-complete-pack/fenrir-F4.png",
+      "bytes": 1509837,
+      "sha256": "977d15a824b85e44db216f82dae0adfca49369304d8242cfa909e87bd38a3a9d"
+    },
+    {
+      "path": "assets/fenrir-complete-pack/fenrir-F5.png",
+      "bytes": 1483586,
+      "sha256": "410d18fc3f836e25b6b0f3363c11c8f5724c66565b44db86f5fb493e4cff9d84"
+    },
+    {
+      "path": "assets/fenrir-complete-pack/fenrir-F6.png",
+      "bytes": 1568064,
+      "sha256": "9402ec0eb72e3a00e6f737cb4b789dc57185c169f9781a7102a03250dfc51bfa"
+    },
+    {
+      "path": "assets/fenrir-complete-pack/fenrir-F7.png",
+      "bytes": 1607735,
+      "sha256": "e38fb6a59cbc2d3ac32d73f113363d0557852e56ba77ce03fdb7e294262e4a1a"
+    },
+    {
+      "path": "assets/fenrir-complete-pack/fenrir-F8.png",
+      "bytes": 1542871,
+      "sha256": "534c68662554f0721068b369105d83385c20dba22494e9e5a8751693221bb18a"
+    },
+    {
+      "path": "assets/fenrir-complete-pack/fenrir-F9.png",
+      "bytes": 1523431,
+      "sha256": "040306b9cad71615c1d5d6af38c6d536c8789bb20b9c1237292d5a6340344c5b"
+    },
+    {
+      "path": "assets/starting-portraits/fenrir.png",
+      "bytes": 3242472,
+      "sha256": "f2ade844dc16e610de7cfbd67c472ef0d7263d5209dc64b1c1b84b86e988df55"
+    },
+    {
+      "path": "assets/yorigumo-complete-pack/yorigumo-Y1.png",
+      "bytes": 1414232,
+      "sha256": "faeab6092f40c34e5f549aede30e99c0da330a0a6e86049941146414ed761a3d"
+    },
+    {
+      "path": "assets/yorigumo-complete-pack/yorigumo-Y2.png",
+      "bytes": 1438267,
+      "sha256": "93296b51fd88bfc7585bd3a64d5e5a2a8d44b290f6f8546edf2e9b765e9f96d1"
+    },
+    {
+      "path": "assets/yorigumo-complete-pack/yorigumo-Y3.png",
+      "bytes": 1573976,
+      "sha256": "be2b59eeccaad78f8e02867538a4527500b879368f19df2cab0e2c9609646930"
+    },
+    {
+      "path": "assets/yorigumo-complete-pack/yorigumo-Y4.png",
+      "bytes": 1427029,
+      "sha256": "cc1a3d4111b7540eff9af8f8aeb29b037db0074d7296a65e22c843a67818943e"
+    },
+    {
+      "path": "assets/yorigumo-complete-pack/yorigumo-Y5.png",
+      "bytes": 1566968,
+      "sha256": "dc10110a743f7715e6782fd9f7fe4a6e283e1bd43c0b772b523394bf9a808c95"
+    },
+    {
+      "path": "assets/yorigumo-complete-pack/yorigumo-Y6.png",
+      "bytes": 1501223,
+      "sha256": "ea71d4d77c41faefda960447df025c3e0b946d9693ffa8ef16be18b19aee0159"
+    },
+    {
+      "path": "assets/yorigumo-complete-pack/yorigumo-Y7.png",
+      "bytes": 1554901,
+      "sha256": "0a4b621f557c6f73d9e01d4c02b1e065cea133cb647113dd6177d57f9f6ffea1"
+    },
+    {
+      "path": "assets/yorigumo-complete-pack/yorigumo-Y8.png",
+      "bytes": 1592344,
+      "sha256": "5b7a4699ecb65aa81c46cb8e3932ab4217951ae08bb71e744dff70626bf5c7c8"
+    },
+    {
+      "path": "assets/yorigumo-complete-pack/yorigumo-Y9.png",
+      "bytes": 1530155,
+      "sha256": "fffc036b39d411414c5e55923bbb9f002e0528b3457015b6176ceccb1dc6bd3c"
+    },
+    {
+      "path": "assets/starting-portraits/yorigumo.png",
+      "bytes": 2802464,
+      "sha256": "6a4a5b8de9944be7135fb27e8a62806d58e4ebaec811d3a856bf6363592209cf"
+    }
+  ]
+}

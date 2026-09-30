@@ -1,0 +1,47 @@
+[
+  {
+    "path": "assets/skadi-complete-pack/skadi-level-2.png",
+    "bytes": 3041240,
+    "sha256": "4e8eced08e1feef3b00754d670bf0195304da20d99438ea4e4b205c0ffcb5b8b"
+  },
+  {
+    "path": "assets/skadi-complete-pack/skadi-level-3.png",
+    "bytes": 3164759,
+    "sha256": "a397f18b7c7b8e9ab17617e8b0c26e66b92715c2da88263ff706167ac4da0506"
+  },
+  {
+    "path": "assets/skadi-complete-pack/skadi-level-4.png",
+    "bytes": 3369875,
+    "sha256": "ebc1d4f39a6b0d99e38b1bb7a5b4d151a9a8cd2b440e8aebcd554535283d6fff"
+  },
+  {
+    "path": "assets/skadi-complete-pack/skadi-level-5.png",
+    "bytes": 3320631,
+    "sha256": "44b784fea49a4edb6892128b1bb9fff811a4ff096297999107638301f4dc6280"
+  },
+  {
+    "path": "assets/skadi-complete-pack/skadi-S1.png",
+    "bytes": 1969169,
+    "sha256": "974e330238bb91ff656403adac56753633951af6950390228c121f8499047152"
+  },
+  {
+    "path": "assets/skadi-complete-pack/skadi-S2.png",
+    "bytes": 1838670,
+    "sha256": "8950bfd5fee224339454b5b844c109f3047be3903dc09308cb75dd0d66c85107"
+  },
+  {
+    "path": "assets/skadi-complete-pack/skadi-S3.png",
+    "bytes": 1921739,
+    "sha256": "47086a47ee57d7d91f13283df75240b093aab7c3419db8b073f54aef5d24f02b"
+  },
+  {
+    "path": "assets/skadi-complete-pack/skadi-S4.png",
+    "bytes": 2107645,
+    "sha256": "32d76c68f8ca40a245eb0aedcb5df9d779788343c69d463013165696620375a8"
+  },
+  {
+    "path": "assets/starting-portraits/skadi.png",
+    "bytes": 3202314,
+    "sha256": "07e1f4a76770f8143f9f5b54ba674806354cc8b5187f8d0b7598943497bae4fa"
+  }
+]

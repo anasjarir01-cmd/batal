@@ -1,0 +1,52 @@
+[
+  {
+    "path": "assets/fenrir-complete-pack/fenrir-F1.png",
+    "bytes": 1518064,
+    "sha256": "190bf59a9bd1f20391b41f2fbde7551810c186ca3f5b7c84e87685cf1bf56884"
+  },
+  {
+    "path": "assets/fenrir-complete-pack/fenrir-F2.png",
+    "bytes": 1541899,
+    "sha256": "d3a6ec604d20241e26d1cd6d5b1781df7ab71aa49b6dc70f92ab42a883883db2"
+  },
+  {
+    "path": "assets/fenrir-complete-pack/fenrir-F3.png",
+    "bytes": 1601708,
+    "sha256": "f7b0718c7b108881d137a0a14ab08f6f38645d7cfd75c208e21b9b0623969cc6"
+  },
+  {
+    "path": "assets/fenrir-complete-pack/fenrir-F4.png",
+    "bytes": 1509837,
+    "sha256": "977d15a824b85e44db216f82dae0adfca49369304d8242cfa909e87bd38a3a9d"
+  },
+  {
+    "path": "assets/fenrir-complete-pack/fenrir-F5.png",
+    "bytes": 1483586,
+    "sha256": "410d18fc3f836e25b6b0f3363c11c8f5724c66565b44db86f5fb493e4cff9d84"
+  },
+  {
+    "path": "assets/fenrir-complete-pack/fenrir-F6.png",
+    "bytes": 1568064,
+    "sha256": "9402ec0eb72e3a00e6f737cb4b789dc57185c169f9781a7102a03250dfc51bfa"
+  },
+  {
+    "path": "assets/fenrir-complete-pack/fenrir-F7.png",
+    "bytes": 1607735,
+    "sha256": "e38fb6a59cbc2d3ac32d73f113363d0557852e56ba77ce03fdb7e294262e4a1a"
+  },
+  {
+    "path": "assets/fenrir-complete-pack/fenrir-F8.png",
+    "bytes": 1542871,
+    "sha256": "534c68662554f0721068b369105d83385c20dba22494e9e5a8751693221bb18a"
+  },
+  {
+    "path": "assets/fenrir-complete-pack/fenrir-F9.png",
+    "bytes": 1523431,
+    "sha256": "040306b9cad71615c1d5d6af38c6d536c8789bb20b9c1237292d5a6340344c5b"
+  },
+  {
+    "path": "assets/starting-portraits/fenrir.png",
+    "bytes": 3242472,
+    "sha256": "f2ade844dc16e610de7cfbd67c472ef0d7263d5209dc64b1c1b84b86e988df55"
+  }
+]

@@ -1,0 +1,47 @@
+[
+  {
+    "path": "assets/zhuge-complete-pack/zhuge-level-2.png",
+    "bytes": 2917355,
+    "sha256": "97a3a2c6bf65af9ecb94153fa27284b1bf436bb6413549f718a691c2d296345d"
+  },
+  {
+    "path": "assets/zhuge-complete-pack/zhuge-level-3.png",
+    "bytes": 2812134,
+    "sha256": "0a85612f8b22e40b5a29d078eeb96bd8c145e72fba6362843363e42678b0958d"
+  },
+  {
+    "path": "assets/zhuge-complete-pack/zhuge-level-4.png",
+    "bytes": 2908785,
+    "sha256": "c5a601c24e861b02c82a97e8f5bcb807caf84f76abace2d742849ee0f40bee49"
+  },
+  {
+    "path": "assets/zhuge-complete-pack/zhuge-level-5.png",
+    "bytes": 3104788,
+    "sha256": "89896a567386f0fc775804fbd0a104a5a3142747fc5784960d77aa6e71b67780"
+  },
+  {
+    "path": "assets/zhuge-complete-pack/zhuge-Z1.png",
+    "bytes": 1592069,
+    "sha256": "52f7ae0193906158ed33cf653bafb444a175ce38abcbb32f81548d3350c0a9ef"
+  },
+  {
+    "path": "assets/zhuge-complete-pack/zhuge-Z2.png",
+    "bytes": 1678490,
+    "sha256": "69a6b40a4955c4de7167a545c02ad818548d06a65fcea417e383bea9041aa5f8"
+  },
+  {
+    "path": "assets/zhuge-complete-pack/zhuge-Z3.png",
+    "bytes": 1634015,
+    "sha256": "69c16902b08dfef249f8a9f19ee5db1215a6bc0ec12ee93cdf7e5f4dcc5cda9c"
+  },
+  {
+    "path": "assets/zhuge-complete-pack/zhuge-Z4.png",
+    "bytes": 1777330,
+    "sha256": "3495257c012974d592567e6ef07486c2e8bcf22e1fd1186da804d0c98399f5d9"
+  },
+  {
+    "path": "assets/starting-portraits/zhuge.png",
+    "bytes": 2833428,
+    "sha256": "1b13ef3780c5196fff31e2596b3c013f5d00f47c08635c7d969af6d40d0c74af"
+  }
+]

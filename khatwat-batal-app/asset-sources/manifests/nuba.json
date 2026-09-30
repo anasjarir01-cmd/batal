@@ -1,0 +1,47 @@
+[
+  {
+    "path": "assets/nuba-complete-pack-gallery/nuba-level-2.png",
+    "bytes": 3019013,
+    "sha256": "498816e7fa02d2cced3b7baea737a4c3c96e8cd6ffcc704264b72172fa7a7f17"
+  },
+  {
+    "path": "assets/nuba-complete-pack-gallery/nuba-level-3.png",
+    "bytes": 2853030,
+    "sha256": "69e9c9f1697fdd2fbea214e025d1ea7fba778f0d256d1cb648d227c5aee475b5"
+  },
+  {
+    "path": "assets/nuba-complete-pack-gallery/nuba-level-4.png",
+    "bytes": 3144588,
+    "sha256": "1b16f6173ed1bde141f37b48721cde4a0f4a0a8f1166a9cb7d3587972a5702db"
+  },
+  {
+    "path": "assets/nuba-complete-pack-gallery/nuba-level-5.png",
+    "bytes": 3137530,
+    "sha256": "9fce3a09c8b2f3e157c33f02f90479e798e1e6dbd74817dcebddafb39d374b4b"
+  },
+  {
+    "path": "assets/nuba-complete-pack-gallery/nuba-N1.png",
+    "bytes": 2923910,
+    "sha256": "ca426c3caa850be5e2c847f86a3df3584e305150288942b027f80dc597bd3416"
+  },
+  {
+    "path": "assets/nuba-complete-pack-gallery/nuba-N2.png",
+    "bytes": 3394474,
+    "sha256": "f5a11fa243ba915dcb4268c64e63807c4ac6c3150db7416261c91b0caabc13bc"
+  },
+  {
+    "path": "assets/nuba-complete-pack-gallery/nuba-N3.png",
+    "bytes": 3433161,
+    "sha256": "d256922ad360ea1d5d97ae9d8c7614b09e42b2078f040076bd949fcb8f512015"
+  },
+  {
+    "path": "assets/nuba-complete-pack-gallery/nuba-N4.png",
+    "bytes": 3210751,
+    "sha256": "9c3c623b1491f1cfad30f68465e1336c7fe43c1404f01b194a5a1ad58835be7c"
+  },
+  {
+    "path": "assets/starting-portraits/nuba.png",
+    "bytes": 2922627,
+    "sha256": "12fca18aeec3bb5ff7e325e453113ff3c9823cdb3998b0d59d0698c34a3b46d5"
+  }
+]

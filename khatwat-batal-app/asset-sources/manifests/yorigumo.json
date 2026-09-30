@@ -1,0 +1,52 @@
+[
+  {
+    "path": "assets/yorigumo-complete-pack/yorigumo-Y1.png",
+    "bytes": 1414232,
+    "sha256": "faeab6092f40c34e5f549aede30e99c0da330a0a6e86049941146414ed761a3d"
+  },
+  {
+    "path": "assets/yorigumo-complete-pack/yorigumo-Y2.png",
+    "bytes": 1438267,
+    "sha256": "93296b51fd88bfc7585bd3a64d5e5a2a8d44b290f6f8546edf2e9b765e9f96d1"
+  },
+  {
+    "path": "assets/yorigumo-complete-pack/yorigumo-Y3.png",
+    "bytes": 1573976,
+    "sha256": "be2b59eeccaad78f8e02867538a4527500b879368f19df2cab0e2c9609646930"
+  },
+  {
+    "path": "assets/yorigumo-complete-pack/yorigumo-Y4.png",
+    "bytes": 1427029,
+    "sha256": "cc1a3d4111b7540eff9af8f8aeb29b037db0074d7296a65e22c843a67818943e"
+  },
+  {
+    "path": "assets/yorigumo-complete-pack/yorigumo-Y5.png",
+    "bytes": 1566968,
+    "sha256": "dc10110a743f7715e6782fd9f7fe4a6e283e1bd43c0b772b523394bf9a808c95"
+  },
+  {
+    "path": "assets/yorigumo-complete-pack/yorigumo-Y6.png",
+    "bytes": 1501223,
+    "sha256": "ea71d4d77c41faefda960447df025c3e0b946d9693ffa8ef16be18b19aee0159"
+  },
+  {
+    "path": "assets/yorigumo-complete-pack/yorigumo-Y7.png",
+    "bytes": 1554901,
+    "sha256": "0a4b621f557c6f73d9e01d4c02b1e065cea133cb647113dd6177d57f9f6ffea1"
+  },
+  {
+    "path": "assets/yorigumo-complete-pack/yorigumo-Y8.png",
+    "bytes": 1592344,
+    "sha256": "5b7a4699ecb65aa81c46cb8e3932ab4217951ae08bb71e744dff70626bf5c7c8"
+  },
+  {
+    "path": "assets/yorigumo-complete-pack/yorigumo-Y9.png",
+    "bytes": 1530155,
+    "sha256": "fffc036b39d411414c5e55923bbb9f002e0528b3457015b6176ceccb1dc6bd3c"
+  },
+  {
+    "path": "assets/starting-portraits/yorigumo.png",
+    "bytes": 2802464,
+    "sha256": "6a4a5b8de9944be7135fb27e8a62806d58e4ebaec811d3a856bf6363592209cf"
+  }
+]

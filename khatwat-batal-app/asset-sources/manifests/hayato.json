@@ -1,0 +1,47 @@
+[
+  {
+    "path": "assets/hayato-complete-pack/hayato-H1.png",
+    "bytes": 2039893,
+    "sha256": "3cb9b9f6a2ad85d081d95429cf9915b0f6c4ae9b18287a100576d4316479e72b"
+  },
+  {
+    "path": "assets/hayato-complete-pack/hayato-H2.png",
+    "bytes": 1966372,
+    "sha256": "fb52926af4a776fcca624b76d5c83b804eff02c847edfb425ad9819ff8f24380"
+  },
+  {
+    "path": "assets/hayato-complete-pack/hayato-H3.png",
+    "bytes": 2039148,
+    "sha256": "97731f0dfcb740fceafd0977eb877cf66ef06667b7938bf74b13f31ff3a52a34"
+  },
+  {
+    "path": "assets/hayato-complete-pack/hayato-H4.png",
+    "bytes": 2006559,
+    "sha256": "e4a5f57c674e920c3a0bbcda761c211f4f111c5e01cd59cb8a2395ad024c7621"
+  },
+  {
+    "path": "assets/hayato-complete-pack/hayato-level-2.png",
+    "bytes": 3628095,
+    "sha256": "c4e84adf1700cccd9dec6982daffc7bd552f8706c366fa5091dcac9debb160fb"
+  },
+  {
+    "path": "assets/hayato-complete-pack/hayato-level-3.png",
+    "bytes": 3917954,
+    "sha256": "166ef9722fdca1dae027f1eaf86e8c68e2592f61ff1b6a77175fc40f75141ea4"
+  },
+  {
+    "path": "assets/hayato-complete-pack/hayato-level-4.png",
+    "bytes": 3799860,
+    "sha256": "ddf1d2e18200c93f221808633919c242b9af354f55e5a1b1df7bf48328ee4c19"
+  },
+  {
+    "path": "assets/hayato-complete-pack/hayato-level-5.png",
+    "bytes": 3835629,
+    "sha256": "412e2dd4e937ac821e72f6461cd91aeaf67087d4949f0697a0fcf966667478e1"
+  },
+  {
+    "path": "assets/starting-portraits/hayato.png",
+    "bytes": 3042606,
+    "sha256": "f080349eda867d890041038c0a900a470edcb6fd74acad96fb567619d11a8154"
+  }
+]
