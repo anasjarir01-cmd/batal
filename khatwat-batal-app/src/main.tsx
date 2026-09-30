@@ -10,6 +10,10 @@ import { App } from './ui/App';
 import { bootstrap } from './store/appStore';
 import { registerPwa } from './pwa/register';
 
+// الاتجاه واللغة على الجذر أيضًا من JS، لأن بعض بيئات العرض تضيف غلاف الصفحة بنفسها
+document.documentElement.lang = 'ar';
+document.documentElement.dir = 'rtl';
+
 void bootstrap();
 void registerPwa();
 

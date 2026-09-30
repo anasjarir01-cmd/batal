@@ -7,6 +7,20 @@ interface PwaState {
 }
 
 let state: PwaState = { updateReady: false, swActive: false };
+
+/** هل يعمل Service Worker هنا فعلًا؟ (بعض البيئات المؤطرة ترفضه، فلا عمل دون إنترنت فيها) */
+export async function serviceWorkerAvailable(timeoutMs = 10000): Promise<boolean> {
+  try {
+    if (!('serviceWorker' in navigator) || !window.isSecureContext) return false;
+    const reg = await Promise.race([
+      navigator.serviceWorker.ready.then(() => true),
+      new Promise<boolean>((r) => setTimeout(() => r(false), timeoutMs)),
+    ]);
+    return reg;
+  } catch {
+    return false;
+  }
+}
 const listeners = new Set<() => void>();
 let updater: ((reload?: boolean) => Promise<void>) | null = null;
 

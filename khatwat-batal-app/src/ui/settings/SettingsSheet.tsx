@@ -4,6 +4,7 @@ import { sfx } from '../../audio/sfx';
 import { CATALOG } from '../../catalog';
 import { DIFFICULTIES, DIFFICULTY_LABEL, rewardFor, type Difficulty } from '../../engine/economy';
 import { assetStatus, downloadAssets, type AssetStatus, type DownloadProgress } from '../../pwa/assetCache';
+import { serviceWorkerAvailable } from '../../pwa/register';
 import { exportBackup, importBackup, parseBackup } from '../../store/backup';
 import { act, getDb, refresh } from '../../store/appStore';
 import { requestPersistentStorage, storageEstimate } from '../../store/db';
@@ -567,10 +568,12 @@ function DataSection({ data }: { data: AppData }) {
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [usage, setUsage] = useState<{ usage: number; quota: number } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [swOk, setSwOk] = useState<boolean | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    void serviceWorkerAvailable().then(setSwOk);
     void assetStatus().then(setStatus);
     void storageEstimate().then(setUsage);
     void navigator.storage?.persisted?.().then(setPersisted).catch(() => setPersisted(null));
@@ -660,7 +663,9 @@ function DataSection({ data }: { data: AppData }) {
     <div className="data-section">
       <div className="card pad">
         <h3>العمل دون إنترنت</h3>
-        {status && !status.supported ? (
+        {swOk === false ? (
+          <p className="warn small">العمل دون إنترنت غير متاح في هذه النافذة. افتح التطبيق من استضافته على HTTPS وثبّته على الهاتف لتفعيله.</p>
+        ) : status && !status.supported ? (
           <p className="warn small">هذا المتصفح لا يدعم تخزين الصور للعمل دون إنترنت.</p>
         ) : status?.ready ? (
           <p className="ok">
@@ -671,7 +676,7 @@ function DataSection({ data }: { data: AppData }) {
             نزّل صور اللعبة (<Num>{status ? (status.bytesTotal / 1e6).toFixed(0) : '…'} MB</Num>) مرة واحدة لتعمل كل الصفحات والقتال دون شبكة.
           </p>
         )}
-        {status && !status.ready && status.supported ? (
+        {swOk !== false && status && !status.ready && status.supported ? (
           <>
             <div className="bar bar-xp" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="تقدم التنزيل">
               <div className="bar-fill" style={{ width: `${pct}%` }} />
