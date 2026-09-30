@@ -28,10 +28,6 @@ jobs:
         working-directory: khatwat-batal-app
     steps:
       - uses: actions/checkout@v5
-      # يحاول تفعيل Pages (المصدر: GitHub Actions) إن لم يكن مفعلًا
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -47,6 +43,8 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -73,3 +71,23 @@ jobs:
           curl -sI "${URL}manifest.webmanifest" | grep -i '^content-type'
           curl -sI "${URL}sw.js" | grep -i '^content-type'
           curl -s "${URL}manifest.webmanifest"
+
+  # تحقق حقيقي على الموقع المنشور في Chromium: قابلية التثبيت حسب Chrome، العمل دون إنترنت، وتصدير النسخة الاحتياطية
+  verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: khatwat-batal-app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: khatwat-batal-app/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test e2e/deployed.spec.ts
+        env:
+          DEPLOYED_URL: ${{ needs.deploy.outputs.page_url }}
