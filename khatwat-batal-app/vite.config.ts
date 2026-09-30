@@ -15,6 +15,7 @@ export default defineConfig({
       registerType: 'prompt',
       injectRegister: false,
       manifest: {
+        id: './',
         name: 'خطوة بطل',
         short_name: 'خطوة بطل',
         description: 'تحدياتك اليومية وجوائزك الشخصية وأبطالك ولعبة بطاقات تكتيكية',

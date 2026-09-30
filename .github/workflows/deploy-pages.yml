@@ -1,9 +1,15 @@
-# نشر «خطوة بطل» على GitHub Pages (HTTPS مجاني) — تشغيل يدوي فقط من تبويب Actions.
-# قبل أول تشغيل: Settings → Pages → Source: GitHub Actions.
+# نشر «خطوة بطل» على GitHub Pages (HTTPS مجاني، قابل للتثبيت كـPWA).
+# يعمل عند كل دفع للفرع الافتراضي يغير التطبيق، أو يدويًا من تبويب Actions.
+# قبل أول تشغيل: Settings → Pages → Source: GitHub Actions (والمستودع عام في الخطة المجانية).
 name: Deploy Khatwat Batal (GitHub Pages)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [claude/project-files-batch-one-hg8f9w]
+    paths:
+      - 'khatwat-batal-app/**'
+      - '.github/workflows/deploy-pages.yml'
 
 permissions:
   contents: read
@@ -43,3 +49,23 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+      # تحقق بعد النشر: الصفحة وملف manifest وService Worker والأيقونات وعينة من صور اللعبة كلها 200
+      - name: Verify installable PWA files
+        env:
+          URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          set -e
+          for p in "" manifest.webmanifest sw.js icons/icon-192.png icons/icon-512.png icons/icon-maskable-512.png \
+                   assets/starting-portraits/hayato.png assets-display/starting-portraits/fenrir.webp; do
+            ok=""
+            for i in 1 2 3 4 5 6; do
+              code=$(curl -s -o /dev/null -w "%{http_code}" "${URL}${p}")
+              if [ "$code" = "200" ]; then ok=1; break; fi
+              sleep 10
+            done
+            echo "${code} ${URL}${p}"
+            test -n "$ok"
+          done
+          curl -sI "${URL}manifest.webmanifest" | grep -i '^content-type'
+          curl -sI "${URL}sw.js" | grep -i '^content-type'
+          curl -s "${URL}manifest.webmanifest"
