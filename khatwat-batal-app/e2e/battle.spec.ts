@@ -190,6 +190,7 @@ test('الفوز يعرض شاشة النتيجة ويمنح الخمسة +1، �
             rec.state.boss.hp = 1;
             rec.state.boss.shield = undefined;
             rec.state.bossPlan = [0, 1, 2].map(() => ({ abilityId: 'F1', targets: [0], hidden: false }));
+            for (const h of rec.state.heroes) h.weaken = undefined;
             st.put(rec);
           };
           tx.oncomplete = () => {

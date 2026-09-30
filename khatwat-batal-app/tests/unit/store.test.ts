@@ -235,19 +235,19 @@ describe('المعركة في التخزين', () => {
     const st = structuredClone(after.state!);
     st.boss.hp = 1;
     st.boss.shield = undefined;
-    // خطة زعيم ثابتة بلا علاج حتى لا يعتمد الاختبار على البذرة العشوائية
+    // حالة ثابتة لا تعتمد على الجولة الأولى العشوائية: خطة زعيم بلا علاج، ولا إضعاف على الأبطال
+    // (F5 في الجولة الأولى قد يضعف الضربة التالية فتصبح 0)
     st.bossPlan = [0, 1, 2].map(() => ({ abilityId: 'F1', targets: [0], hidden: false }));
-    await db.put('battle', { ...after, state: st });
-    const card = st.hand.find((id) => ['H1', 'N1', 'N2', 'S1', 'S2'].includes(st.cards[id].abilityId));
-    const plan = card ? [{ cardId: card }] : [];
-    if (!card) {
-      // لا بطاقة هجوم في اليد: نضع واحدة
-      st.hand[0] = 'skadi:S1';
-      st.draw = st.draw.filter((x) => x !== 'skadi:S1');
-      st.discard = st.discard.filter((x) => x !== 'skadi:S1');
-      await db.put('battle', { ...after, state: st });
-      plan.push({ cardId: 'skadi:S1' });
+    for (const h of st.heroes) h.weaken = undefined;
+    // ضمان بطاقة هجوم في اليد مع حفظ عدد البطاقات
+    const attackId = 'skadi:S2';
+    if (!st.hand.includes(attackId)) {
+      for (const zone of ['draw', 'discard'] as const) st[zone] = st[zone].filter((x) => x !== attackId);
+      st.draw.push(st.hand.shift()!);
+      st.hand.unshift(attackId);
     }
+    await db.put('battle', { ...after, state: st });
+    const plan = [{ cardId: attackId }];
     const fin = await commitRound(db, after.rev, plan);
     expect(fin.state!.outcome).toBe('victory');
     expect(fin.settled?.winners.length).toBe(5);
