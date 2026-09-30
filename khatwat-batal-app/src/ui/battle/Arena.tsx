@@ -1,6 +1,6 @@
 // ساحة القتال بالترتيب الإلزامي من أعلى لأسفل: بانر الزعيم، حركاته الثلاث، خطة اللاعب
 // (زر التنفيذ يسارًا ومؤشر الطاقة يمينًا)، اليد، الأبطال. لا شريط تنقل ولا ترويسة أثناء المعركة.
-// لمسة واحدة تختار، ولمستان سريعتان تكبّران؛ القواعد والأرقام كلها من المحرك دون تغيير.
+// البطاقات تُحمل بإمساك قصير وتُسحب إلى أي خانة؛ لمستان تكبّران. القواعد والأرقام كلها من المحرك دون تغيير.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { sfx, sfxForFamily } from '../../audio/sfx';
 import { CATALOG, displayUrl, heroImageForLevel } from '../../catalog';
@@ -19,7 +19,7 @@ import { HandPager } from './HandPager';
 import { fxForGroup, groupEvents } from './playback';
 import { abilityTint, tintClass, type Tint } from './roles';
 import { BossBanner, HeroToken, heroShortName, unitDetailLines, type HeroMark } from './Units';
-import { useTap } from './useTap';
+import { useCardGesture, useTap, type DragStart, type TapSource } from './useTap';
 import { VfxLayer, type VfxHandle } from './Vfx';
 
 interface View {
@@ -31,20 +31,62 @@ interface View {
   banner: string | null;
 }
 
+/**
+ * الخطة أثناء التحضير: ثلاث خانات مستقلة (قد تكون الأولى فارغة مؤقتًا).
+ * عند التنفيذ يجب ألا يسبق بطاقةً فراغ، فتُرسل للمحرك كما هي: 1، أو 1 و2، أو 1 و2 و3.
+ */
+type Slots = Array<PlannedCard | null>;
+const EMPTY_SLOTS: Slots = [null, null, null];
+
 /** وضع التفاعل الحالي في الساحة. */
 type Mode =
   | { kind: 'idle' }
-  /** بطاقة جديدة من اليد تنتظر اختيار هدفها. */
-  | { kind: 'target'; cardId: string }
-  /** بطاقة مخططة محددة: تُنقل بلمس خانة أخرى، أو يُغيَّر هدفها بلمس بطل. */
+  /** بطاقة أُسقطت في خانة وتنتظر اختيار هدفها؛ طاقتها محجوزة، والإلغاء يعيد كل شيء. */
+  | { kind: 'target'; cardId: string; slot: number }
+  /** بطاقة مخططة محددة: يُغيَّر هدفها بلمس بطل، أو تُنقل بلمس خانة أخرى. */
   | { kind: 'slot'; index: number }
+  /** وضع بطاقة من اليد بلوحة المفاتيح: اختر الخانة. */
+  | { kind: 'carry'; cardId: string }
   /** حركة زعيم ظاهرة محددة: أهدافها مُعلَّمة على الأبطال. */
   | { kind: 'boss'; k: number };
 
+/** بطاقة محمولة بالإصبع. */
+interface Drag {
+  cardId: string;
+  abilityId: string;
+  /** الخانة التي حُملت منها، أو null إذا كانت من اليد. */
+  from: number | null;
+  over: number | null;
+  ok: boolean;
+  returning: boolean;
+}
+
 const IDLE: Mode = { kind: 'idle' };
 const progressMemo = new Map<string, number>();
-type Draft = { key: string; plan: PlannedCard[] };
+type Draft = { key: string; slots: Slots };
 let draftMemo: Draft | null = null;
+
+function compact(s: Slots): PlannedCard[] {
+  return s.filter((p): p is PlannedCard => !!p);
+}
+
+/** أول خانة فارغة تسبق بطاقة (فراغ وسط الخطة)، أو null. */
+function gapBefore(s: Slots): number | null {
+  for (let k = 0; k < s.length; k++) if (!s[k] && s.slice(k + 1).some(Boolean)) return k;
+  return null;
+}
+
+function padSlots(plan: PlannedCard[]): Slots {
+  return Array.from({ length: PLAN_SLOTS }, (_, k) => plan[k] ?? null);
+}
+
+function readDraft(d: unknown, key: string): Slots | null {
+  const x = d as { key?: string; slots?: Slots; plan?: PlannedCard[] } | undefined;
+  if (!x || x.key !== key) return null;
+  if (Array.isArray(x.slots) && x.slots.length === PLAN_SLOTS) return x.slots.map((p) => p ?? null);
+  if (Array.isArray(x.plan)) return padSlots(x.plan); // مسودة من النسخة السابقة
+  return null;
+}
 
 function boardOf(s: BattleState): BoardSnapshot {
   return { round: s.round, phase: s.phase, phase2Pending: s.phase2Pending, heroes: s.heroes, boss: s.boss };
@@ -67,6 +109,9 @@ function waitVisible(): Promise<void> {
   });
 }
 
+const cardCost = (st: BattleState, id: string) => CATALOG.abilities.get(st.cards[id].abilityId)?.cost ?? 0;
+const usedOf = (st: BattleState, s: Slots) => compact(s).reduce((sum, p) => sum + cardCost(st, p.cardId), 0);
+
 export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: boolean }) {
   const rec = data.battle;
   const live = rec.state as BattleState;
@@ -81,45 +126,55 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
   const [menuOpen, setMenuOpen] = useState(false);
   const [detail, setDetail] = useState<'boss' | number | null>(null);
   const [hiddenZoom, setHiddenZoom] = useState<number | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+  const [gapPulse, setGapPulse] = useState(0);
+  const [drag, setDrag] = useState<Drag | null>(null);
   const updateReady = usePwa().updateReady;
 
   // ——— الخطة (مسودة محفوظة لا تؤثر في الحساب) ———
   const draftKey = `${live.battleId}:${live.round}`;
-  const [plan, setPlan] = useState<PlannedCard[]>(() => {
+  const [slots, setSlots] = useState<Slots>(() => {
     // آخر مسودة محفوظة: من الذاكرة إن خرج اللاعب من الساحة وعاد، وإلا من التخزين بعد إعادة التحميل
-    const d = draftMemo?.key === draftKey ? draftMemo : (data.meta.battleDraft as Draft | undefined);
-    if (d?.key === draftKey && validatePlan(live, d.plan) === null) return d.plan;
-    return [];
+    const s = readDraft(draftMemo?.key === draftKey ? draftMemo : data.meta.battleDraft, draftKey);
+    if (s && validatePlan(live, compact(s)) === null) return s;
+    return EMPTY_SLOTS;
   });
-  // مراجع لأحدث قيمة: اللمسة الواحدة تُنفَّذ بعد مهلة قصيرة، فلا يجوز أن تقرأ خطة قديمة.
-  const planRef = useRef(plan);
+  // مراجع لأحدث قيمة: اللمسة الواحدة والسحب يُنفَّذان خارج دورة العرض، فلا يجوز أن يقرآ خطة قديمة.
+  const slotsRef = useRef(slots);
   const modeRef = useRef(mode);
   const liveRef = useRef(live);
   const lockedRef = useRef(false);
-  planRef.current = plan;
+  const dragLockRef = useRef(false);
+  slotsRef.current = slots;
   modeRef.current = mode;
   liveRef.current = live;
-  const commitPlan = (next: PlannedCard[]) => {
-    planRef.current = next;
-    setPlan(next);
+  const commitSlots = (next: Slots) => {
+    slotsRef.current = next;
+    setSlots(next);
   };
   const setModeNow = (m: Mode) => {
     modeRef.current = m;
     setMode(m);
+  };
+  const flashTimer = useRef<number | null>(null);
+  const showFlash = (text: string) => {
+    setFlash(text);
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlash(null), 2400);
   };
 
   const planKeyRef = useRef(draftKey);
   useEffect(() => {
     if (planKeyRef.current !== draftKey) {
       planKeyRef.current = draftKey;
-      commitPlan([]);
+      commitSlots(EMPTY_SLOTS);
       setModeNow(IDLE);
     }
   }, [draftKey]);
   useEffect(() => {
-    draftMemo = { key: draftKey, plan };
+    draftMemo = { key: draftKey, slots };
     void setMeta(getDb(), 'battleDraft', draftMemo).catch(() => undefined);
-  }, [plan, draftKey]);
+  }, [slots, draftKey]);
 
   const playing = !!exec && Math.max(exec.cursor, progressMemo.get(exec.id) ?? 0) < exec.events.length;
 
@@ -247,17 +302,19 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
   // ——— مصادر العرض ———
   const shownState: BattleState = playing && exec ? exec.before : live;
   const board: BoardSnapshot = view?.board ?? boardOf(live);
-  const shownPlan: PlannedCard[] = playing && exec ? exec.plan : plan;
+  const shownSlots: Slots = playing && exec ? padSlots(exec.plan) : slots;
   const bossPlan: BossAction[] = shownState.bossPlan;
-  const planIds = new Set(shownPlan.map((p) => p.cardId));
+  const planIds = new Set(compact(shownSlots).map((p) => p.cardId));
   const hand = playing && exec ? exec.before.hand.filter((id) => !planIds.has(id)) : live.hand;
-  const cost = (st: BattleState, id: string) => CATALOG.abilities.get(st.cards[id].abilityId)?.cost ?? 0;
-  const usedOf = (st: BattleState, p: PlannedCard[]) => p.reduce((s, q) => s + cost(st, q.cardId), 0);
-  const remaining = ENERGY_PER_ROUND - usedOf(shownState, shownPlan);
+  const pendingCard = mode.kind === 'target' ? mode.cardId : null;
+  // طاقة البطاقة التي تنتظر هدفها محجوزة حتى يُختار الهدف أو يُلغى الوضع
+  const remaining = ENERGY_PER_ROUND - usedOf(shownState, shownSlots) - (pendingCard ? cardCost(live, pendingCard) : 0);
   const locked = playing || busy;
   lockedRef.current = locked;
-  const planError = locked ? null : validatePlan(live, plan);
-  const canExecute = !locked && plan.length > 0 && planError === null;
+  const planned = compact(slots);
+  const planError = locked ? null : validatePlan(live, planned);
+  const gap = locked ? null : gapBefore(slots);
+  const canExecute = !locked && planned.length > 0 && planError === null && mode.kind !== 'target';
   const visibleMove = (k: number) => !bossPlan[k].hidden || (view?.revealed.includes(k) ?? false);
 
   useEffect(() => {
@@ -268,46 +325,93 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // ——— تفاعل التخطيط (يقرأ دائمًا أحدث حالة عبر المراجع) ———
-  function selectCard(id: string) {
-    if (lockedRef.current) return;
+  // ——— قواعد الخطة (تقرأ دائمًا أحدث حالة عبر المراجع) ———
+  /** وضع بطاقة من اليد في الخانة k. يعيد false إذا رُفضت، والخطة والطاقة كما هما. */
+  function placeFromHand(cardId: string, k: number): boolean {
+    if (lockedRef.current) return false;
     const st = liveRef.current;
-    const cur = planRef.current;
-    const m = modeRef.current;
-    const existing = cur.findIndex((p) => p.cardId === id);
-    if (existing >= 0) {
-      commitPlan(cur.filter((_, i) => i !== existing));
-      setModeNow(IDLE);
-      sfx.deselect();
-      return;
+    const cur = slotsRef.current;
+    const a = CATALOG.abilities.get(st.cards[cardId].abilityId)!;
+    if (cur.some((p) => p?.cardId === cardId)) return false; // لا نسخة ثانية من البطاقة نفسها
+    if (cur[k]) {
+      toast(`الخانة ${k + 1} مشغولة؛ أزل بطاقتها بزر × أو انقلها أولًا`, 'info');
+      return false;
     }
-    if (m.kind === 'target' && m.cardId === id) {
-      setModeNow(IDLE);
-      sfx.deselect();
-      return;
-    }
-    const a = CATALOG.abilities.get(st.cards[id].abilityId)!;
     const left = ENERGY_PER_ROUND - usedOf(st, cur);
-    if (cur.length >= PLAN_SLOTS) return toast('ثلاث بطاقات كحد أقصى في الجولة', 'info');
-    if ((a.cost ?? 0) > left) return toast(`الطاقة لا تكفي: ${a.name} تحتاج ${a.cost} والمتاح ${left}`, 'info');
-    if (needsTarget(st, id)) {
-      if (!legalTargets(st, id).length) return toast(a.heroTarget === 'ally-other' ? 'لا يوجد حليف آخر حي لهذه القدرة' : 'لا يوجد هدف حي', 'info');
-      setModeNow({ kind: 'target', cardId: id });
-      sfx.select();
-      return;
+    if ((a.cost ?? 0) > left) {
+      toast(`الطاقة لا تكفي: ${a.name} تحتاج ${a.cost} والمتاح ${left}`, 'info');
+      return false;
     }
-    commitPlan([...cur, { cardId: id }]);
+    if (needsTarget(st, cardId)) {
+      if (!legalTargets(st, cardId).length) {
+        toast(a.heroTarget === 'ally-other' ? 'لا يوجد حليف آخر حي لهذه القدرة' : 'لا يوجد هدف حي', 'info');
+        return false;
+      }
+      setModeNow({ kind: 'target', cardId, slot: k });
+      sfx.select();
+      return true;
+    }
+    const next = cur.slice();
+    next[k] = { cardId };
+    commitSlots(next);
+    setModeNow(IDLE);
+    sfx.select();
+    return true;
+  }
+
+  /** نقل بطاقة مخططة إلى خانة فارغة، أو تبادل خانتين مع بقاء هدف كل بطاقة. بلا أي كلفة طاقة. */
+  function moveSlot(from: number, to: number) {
+    if (lockedRef.current || from === to) return;
+    const cur = slotsRef.current;
+    if (!cur[from]) return;
+    const next = cur.slice();
+    [next[from], next[to]] = [next[to], next[from]];
+    commitSlots(next);
     setModeNow(IDLE);
     sfx.select();
   }
 
+  function removeSlot(k: number) {
+    if (lockedRef.current) return;
+    const cur = slotsRef.current;
+    if (!cur[k]) return;
+    const next = cur.slice();
+    next[k] = null;
+    commitSlots(next);
+    setModeNow(IDLE);
+    sfx.deselect();
+  }
+
+  function cancelPending() {
+    if (modeRef.current.kind === 'target') {
+      setModeNow(IDLE);
+      sfx.deselect();
+    }
+  }
+
+  function tapHand(id: string, src: TapSource) {
+    if (lockedRef.current) return;
+    const at = slotsRef.current.findIndex((p) => p?.cardId === id);
+    if (at >= 0) return showFlash(`هذه البطاقة في الخانة ${at + 1}؛ اسحبها من الخطة لنقلها أو أزلها بزر ×`);
+    if (modeRef.current.kind === 'target') return showFlash('اختر هدفًا للبطاقة المعلقة أو ألغها أولًا');
+    if (src === 'key') {
+      // لوحة المفاتيح وقارئ الشاشة: حمل البطاقة ثم اختيار الخانة
+      setModeNow({ kind: 'carry', cardId: id });
+      sfx.select();
+      return;
+    }
+    showFlash('أمسك البطاقة قليلًا ثم اسحبها إلى إحدى خانات الخطة');
+  }
+
   function tapHero(slot: number) {
     const st = liveRef.current;
-    const cur = planRef.current;
+    const cur = slotsRef.current;
     const m = modeRef.current;
     if (!lockedRef.current && m.kind === 'target') {
-      if (legalTargets(st, m.cardId).includes(slot)) {
-        commitPlan([...cur, { cardId: m.cardId, target: slot }]);
+      if (legalTargets(st, m.cardId).includes(slot) && !cur[m.slot]) {
+        const next = cur.slice();
+        next[m.slot] = { cardId: m.cardId, target: slot };
+        commitSlots(next);
         setModeNow(IDLE);
         sfx.select();
       }
@@ -316,7 +420,7 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
     if (!lockedRef.current && m.kind === 'slot') {
       const p = cur[m.index];
       if (p && needsTarget(st, p.cardId) && legalTargets(st, p.cardId).includes(slot)) {
-        commitPlan(cur.map((q, i) => (i === m.index ? { ...q, target: slot } : q)));
+        commitSlots(cur.map((q, i) => (i === m.index && q ? { ...q, target: slot } : q)));
         setModeNow(IDLE);
         sfx.select();
         return;
@@ -327,40 +431,24 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
 
   function tapSlot(k: number) {
     if (lockedRef.current) return;
-    const cur = planRef.current;
+    const cur = slotsRef.current;
     const m = modeRef.current;
-    if (m.kind === 'slot' && m.index < cur.length) {
-      const i = m.index;
-      if (k === i) {
-        setModeNow(IDLE);
-        sfx.deselect();
-        return;
-      }
-      if (k >= cur.length) {
-        // الخطة متصلة (الخانة k تقابل حركة الزعيم k)، فالخانة الفارغة ليست وجهة نقل.
-        setModeNow(IDLE);
-        return;
-      }
-      const next = cur.slice();
-      [next[i], next[k]] = [next[k], next[i]];
-      commitPlan(next);
-      setModeNow(IDLE);
-      sfx.select();
+    if (m.kind === 'target') return;
+    if (m.kind === 'carry') {
+      if (placeFromHand(m.cardId, k) && modeRef.current.kind === 'carry') setModeNow(IDLE);
       return;
     }
-    if (k < cur.length) {
+    if (m.kind === 'slot' && cur[m.index]) {
+      if (k === m.index) {
+        setModeNow(IDLE);
+        sfx.deselect();
+      } else moveSlot(m.index, k);
+      return;
+    }
+    if (cur[k]) {
       setModeNow({ kind: 'slot', index: k });
       sfx.select();
-    }
-  }
-
-  function removeSlot(k: number) {
-    if (lockedRef.current) return;
-    const cur = planRef.current;
-    if (k >= cur.length) return;
-    commitPlan(cur.filter((_, i) => i !== k));
-    setModeNow(IDLE);
-    sfx.deselect();
+    } else showFlash(`اسحب بطاقة من يدك إلى الخانة ${k + 1}`);
   }
 
   function tapBoss(k: number) {
@@ -369,6 +457,7 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
       return;
     }
     const m = modeRef.current;
+    if (m.kind === 'target' || m.kind === 'carry') return;
     setModeNow(m.kind === 'boss' && m.k === k ? IDLE : { kind: 'boss', k });
   }
 
@@ -377,17 +466,168 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
     openOverlay({ kind: 'card', abilityId: bossPlan[k].abilityId });
   }
 
+  // ——— السحب والإفلات ———
+  const ghostRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ pointerId: number; x: number; y: number; w: number; h: number; ox: number; oy: number; rects: Array<DOMRect | null>; info: Drag } | null>(null);
+  const placeGhost = () => {
+    const d = dragRef.current;
+    const g = ghostRef.current;
+    if (!d || !g) return;
+    g.style.width = `${d.w}px`;
+    g.style.height = `${d.h}px`;
+    g.style.transform = `translate3d(${d.x - d.w / 2}px, ${d.y - d.h * 0.62}px, 0)`;
+  };
+
+  function dropCheck(info: Drag, k: number | null): boolean {
+    if (k === null) return false;
+    const cur = slotsRef.current;
+    if (info.from !== null) return k !== info.from;
+    const left = ENERGY_PER_ROUND - usedOf(liveRef.current, cur);
+    return !cur[k] && cardCost(liveRef.current, info.cardId) <= left;
+  }
+
+  /** إمساك مرفوض: الإصبع نفسه لا يصفّح اليد حتى يُرفع، فلا يتحرك شيء دون قصد. */
+  function holdRefused(pointerId: number) {
+    dragLockRef.current = true;
+    const release = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return;
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', release);
+      if (!dragRef.current) dragLockRef.current = false;
+    };
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    return false;
+  }
+
+  function beginDrag(cardId: string, from: number | null, s: DragStart): boolean {
+    if (dragRef.current) return false;
+    if (lockedRef.current) return holdRefused(s.pointerId);
+    const m = modeRef.current;
+    if (m.kind === 'target') {
+      showFlash('اختر هدفًا للبطاقة المعلقة أو ألغها أولًا');
+      return holdRefused(s.pointerId);
+    }
+    const cur = slotsRef.current;
+    if (from === null) {
+      const at = cur.findIndex((p) => p?.cardId === cardId);
+      if (at >= 0) {
+        showFlash(`هذه البطاقة في الخانة ${at + 1}؛ اسحبها من الخطة لنقلها`);
+        return holdRefused(s.pointerId);
+      }
+    } else if (cur[from]?.cardId !== cardId) return false;
+    const root = rootRef.current;
+    if (!root) return false;
+    const rects = Array.from({ length: PLAN_SLOTS }, (_, k) => root.querySelector<HTMLElement>(`.pslot[data-slot="${k + 1}"]`)?.getBoundingClientRect() ?? null);
+    const src = s.el.getBoundingClientRect();
+    const info: Drag = { cardId, abilityId: liveRef.current.cards[cardId].abilityId, from, over: null, ok: false, returning: false };
+    dragRef.current = { pointerId: s.pointerId, x: s.x, y: s.y, w: src.width * 1.06, h: src.height * 1.06, ox: src.left + src.width / 2, oy: src.top + src.height * 0.62 * 1.06 - src.height * 0.03, rects, info };
+    dragLockRef.current = true;
+    setModeNow(IDLE);
+    setDrag(info);
+    sfx.select();
+    navigator.vibrate?.(12);
+
+    const hit = (x: number, y: number) => {
+      const d = dragRef.current!;
+      for (let k = 0; k < d.rects.length; k++) {
+        const r = d.rects[k];
+        if (r && x >= r.left - 8 && x <= r.right + 8 && y >= r.top - 8 && y <= r.bottom + 8) return k;
+      }
+      return null;
+    };
+    const onMove = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d || e.pointerId !== d.pointerId || d.info.returning) return;
+      e.preventDefault();
+      d.x = e.clientX;
+      d.y = e.clientY;
+      placeGhost();
+      let over = hit(e.clientX, e.clientY);
+      if (over !== null && over === d.info.from) over = null;
+      if (over !== d.info.over) {
+        d.info = { ...d.info, over, ok: dropCheck(d.info, over) };
+        setDrag(d.info);
+      }
+    };
+    const finish = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      dragLockRef.current = false;
+    };
+    const flyBack = () => {
+      const d = dragRef.current;
+      if (!d) return;
+      d.info = { ...d.info, over: null, returning: true };
+      setDrag(d.info);
+      d.x = d.ox;
+      d.y = d.oy;
+      requestAnimationFrame(placeGhost);
+      window.setTimeout(() => {
+        dragRef.current = null;
+        setDrag(null);
+      }, 200);
+    };
+    const onUp = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      finish();
+      let over = hit(e.clientX, e.clientY);
+      if (over !== null && over === d.info.from) over = null;
+      const info = d.info;
+      if (over === null) return flyBack();
+      if (info.from !== null) {
+        dragRef.current = null;
+        setDrag(null);
+        moveSlot(info.from, over);
+        return;
+      }
+      if (placeFromHand(info.cardId, over)) {
+        dragRef.current = null;
+        setDrag(null);
+      } else flyBack();
+    };
+    const onCancel = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      finish();
+      flyBack();
+    };
+    window.addEventListener('pointermove', onMove, { passive: false });
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    return true;
+  }
+
+  // يبدأ العرض وأصبع ما زال يحمل بطاقة: تعود البطاقة دون أي تغيير
+  useEffect(() => {
+    if (locked && dragRef.current && !dragRef.current.info.returning) {
+      dragRef.current = null;
+      dragLockRef.current = false;
+      setDrag(null);
+    }
+  }, [locked]);
+
   async function execute() {
     if (lockedRef.current) return;
-    const cur = planRef.current;
-    if (!cur.length) return;
-    const err = validatePlan(liveRef.current, cur);
+    const cur = slotsRef.current;
+    const list = compact(cur);
+    if (!list.length || modeRef.current.kind === 'target') return;
+    const g = gapBefore(cur);
+    if (g !== null) {
+      setGapPulse((n) => n + 1);
+      toast(`أكمل ترتيب الخطة: الخانة ${g + 1} فارغة قبل بطاقة. ضع فيها بطاقة أو انقل البطاقات إليها.`, 'error');
+      return;
+    }
+    const err = validatePlan(liveRef.current, list);
     if (err) return toast(err, 'error');
     lockedRef.current = true;
     setBusy(true);
     setModeNow(IDLE);
     try {
-      await act((db) => commitRound(db, rec.rev, cur));
+      // لا فراغ قبل أي بطاقة: الخانة k في الواجهة هي الخانة k في المحرك
+      await act((db) => commitRound(db, rec.rev, list));
       sfx.confirm();
     } catch (e) {
       toast(e instanceof OpError ? e.message : 'تعذر تنفيذ الجولة', 'error');
@@ -401,7 +641,7 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
     if (lockedRef.current) return;
     const ok = await confirmDialog({
       title: 'تمرير الجولة؟',
-      body: <p>لن تُلعب أي بطاقة هذه الجولة{planRef.current.length ? ' (ولا البطاقات الموضوعة في الخطة)' : ''}، وسينفذ الزعيم حركاته الثلاث.</p>,
+      body: <p>لن تُلعب أي بطاقة هذه الجولة{compact(slotsRef.current).length ? ' (ولا البطاقات الموضوعة في الخطة)' : ''}، وسينفذ الزعيم حركاته الثلاث.</p>,
       confirmText: 'تمرير',
     });
     if (!ok || lockedRef.current) return;
@@ -438,11 +678,11 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
   // ——— علامات العرض ———
   const cycleStart = Math.floor((shownState.round - 1) / 3) * 3 + 1;
   const executedThisCycle = shownState.bossHistory.filter((h) => h.round >= cycleStart && h.round < shownState.round);
-  const pendingCard = mode.kind === 'target' ? mode.cardId : null;
-  const selSlot = mode.kind === 'slot' && mode.index < shownPlan.length ? mode.index : null;
-  const selPlanned = selSlot !== null ? shownPlan[selSlot] : undefined;
+  const selSlot = mode.kind === 'slot' && shownSlots[mode.index] ? mode.index : null;
+  const selPlanned = selSlot !== null ? (shownSlots[selSlot] ?? undefined) : undefined;
   const selNeedsTarget = !!selPlanned && needsTarget(live, selPlanned.cardId);
   const inspected = mode.kind === 'boss' && visibleMove(mode.k) ? bossPlan[mode.k] : undefined;
+  const carryCard = mode.kind === 'carry' ? mode.cardId : null;
 
   function heroMark(slot: number): HeroMark {
     if (pendingCard) return legalTargets(live, pendingCard).includes(slot) ? 'selectable' : 'dimmed';
@@ -454,16 +694,25 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
     return null;
   }
 
-  let hint: string | null = null;
-  if (pendingCard) hint = `اختر هدفًا لـ«${CATALOG.abilities.get(live.cards[pendingCard].abilityId)?.name}» من الأبطال`;
-  else if (selPlanned) {
-    const canMove = shownPlan.length > 1;
-    hint = selNeedsTarget ? (canMove ? 'المس خانة أخرى لتبديل الترتيب، أو بطلًا لتغيير الهدف' : 'المس بطلًا لتغيير هدف البطاقة') : canMove ? 'المس خانة أخرى لتبديل ترتيب البطاقتين' : 'ضع بطاقة أخرى لتتمكن من تبديل الترتيب';
+  /** حالة كل خانة أثناء الحمل: وجهة صالحة، أو تحت الإصبع صالحة/مرفوضة. */
+  function dropState(k: number): 'candidate' | 'over' | 'bad' | null {
+    const d = drag ?? (carryCard ? ({ cardId: carryCard, abilityId: '', from: null, over: null, ok: false, returning: false } as Drag) : null);
+    if (!d || d.returning || k === d.from) return null;
+    if (drag && d.over === k) return d.ok ? 'over' : 'bad';
+    return dropCheck(d, k) ? 'candidate' : null;
   }
+
+  let hint: string | null = null;
+  if (pendingCard) hint = `اختر هدفًا لـ«${CATALOG.abilities.get(live.cards[pendingCard].abilityId)?.name}» من الأبطال، أو × للإلغاء`;
+  else if (drag && !drag.returning) hint = drag.from === null ? 'أفلت البطاقة فوق خانة فارغة' : 'أفلتها فوق خانة فارغة لنقلها، أو فوق بطاقة لتبادلهما';
+  else if (carryCard) hint = 'اختر الخانة التي توضع فيها البطاقة (Esc للإلغاء)';
+  else if (selPlanned) hint = selNeedsTarget ? 'المس بطلًا لتغيير الهدف، أو المس خانة أخرى للنقل' : 'المس خانة أخرى للنقل أو التبادل';
   else if (inspected && mode.kind === 'boss') hint = inspected.targets.length ? `أهداف حركة الزعيم ${mode.k + 1} مُعلَّمة على الأبطال` : `حركة الزعيم ${mode.k + 1} تخصّه هو`;
+  else if (flash) hint = flash;
+  else if (gap !== null) hint = `الخانة ${gap + 1} فارغة قبل بطاقة؛ أكمل ترتيب الخطة قبل التنفيذ`;
 
   return (
-    <div className={`arena ${playing ? 'is-playing' : ''} ${mode.kind !== 'idle' ? `mode-${mode.kind}` : ''}`} ref={rootRef} data-testid="arena">
+    <div className={`arena ${playing ? 'is-playing' : ''} ${mode.kind !== 'idle' ? `mode-${mode.kind}` : ''} ${drag ? 'is-dragging' : ''}`} ref={rootRef} data-testid="arena">
       <div className="arena-sky" aria-hidden="true">
         <span className="aurora au1" />
         <span className="aurora au2" />
@@ -528,8 +777,8 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
             </span>
           </div>
           {Array.from({ length: PLAN_SLOTS }, (_, k) => {
-            const p = shownPlan[k];
-            const ghost = !p && pendingCard && k === shownPlan.length ? pendingCard : null;
+            const p = shownSlots[k];
+            const ghost = !p && mode.kind === 'target' && mode.slot === k ? mode.cardId : null;
             const cardId = p?.cardId ?? ghost;
             const a = cardId ? CATALOG.abilities.get(shownState.cards[cardId].abilityId) : undefined;
             const targetHero = p?.target !== undefined ? shownState.heroes[p.target] : undefined;
@@ -537,48 +786,64 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
               <PlanSlot
                 key={k}
                 k={k}
+                cardId={p?.cardId ?? null}
                 abilityId={a?.id ?? null}
                 name={a?.name ?? ''}
                 ghost={!!ghost}
                 targetImg={targetHero ? displayUrl(heroImageForLevel(CATALOG.heroById.get(targetHero.heroId)!, cosmeticLevel(wins[targetHero.heroId] ?? 0))) : null}
                 targetName={targetHero ? heroShortName(targetHero.heroId) : null}
                 selected={selSlot === k}
-                moveTarget={selSlot !== null && selSlot !== k && k < shownPlan.length}
+                moveTarget={selSlot !== null && selSlot !== k}
+                drop={dropState(k)}
+                carrying={!!drag && !drag.returning && drag.from === k}
+                gap={gap === k}
+                gapPulse={gap === k ? gapPulse : 0}
                 active={view?.activeSlot === k}
                 done={!!view?.doneSlots.includes(k)}
                 locked={locked}
                 onTap={() => tapSlot(k)}
                 onZoom={() => (p && a ? openOverlay({ kind: 'card', abilityId: a.id, cardId: p.cardId, target: p.target }) : a ? openOverlay({ kind: 'card', abilityId: a.id }) : undefined)}
-                onRemove={() => (ghost ? setModeNow(IDLE) : removeSlot(k))}
+                onRemove={() => (ghost ? cancelPending() : removeSlot(k))}
+                onDrag={(s) => (p ? beginDrag(p.cardId, k, s) : false)}
               />
             );
           })}
-          <button className={`exec-btn ${busy ? 'busy' : ''}`} onClick={() => void execute()} disabled={!canExecute} data-testid="execute" aria-label={plan.length ? 'تنفيذ الجولة' : 'تنفيذ: ضع بطاقة واحدة على الأقل في الخطة'} title={planError ?? undefined}>
+          <button
+            className={`exec-btn ${busy ? 'busy' : ''} ${gap !== null && canExecute ? 'has-gap' : ''}`}
+            onClick={() => void execute()}
+            disabled={!canExecute}
+            data-testid="execute"
+            aria-label={!planned.length ? 'تنفيذ: ضع بطاقة واحدة على الأقل في الخطة' : gap !== null ? `تنفيذ: الخانة ${gap + 1} فارغة قبل بطاقة` : 'تنفيذ الجولة'}
+            title={planError ?? undefined}
+          >
             <Icon name="swords" size={20} />
             <span className="exec-label">تنفيذ</span>
           </button>
         </section>
 
-        {/* 4 — يد القدرات: أربع بطاقات ظاهرة، والسحب يكشف الباقي */}
+        {/* 4 — يد القدرات: أربع بطاقات ظاهرة، والسحب الأفقي يكشف الباقي؛ الإمساك القصير يحمل البطاقة */}
         <HandPager
           items={hand}
           resetKey={`${live.round}:${playing ? 'play' : 'plan'}`}
+          blockRef={dragLockRef}
           render={(id) => {
             const a = CATALOG.abilities.get(shownState.cards[id].abilityId)!;
-            const idx = shownPlan.findIndex((p) => p.cardId === id);
-            const planned = idx >= 0;
-            const tooCostly = !planned && (a.cost ?? 0) > remaining;
+            const idx = shownSlots.findIndex((p) => p?.cardId === id);
+            const isPlanned = idx >= 0;
+            const tooCostly = !isPlanned && (a.cost ?? 0) > remaining;
             return (
               <HandCard
                 abilityId={a.id}
                 name={a.name}
                 cost={a.cost ?? 0}
                 tint={abilityTint(a.id)}
-                planned={planned ? idx + 1 : null}
-                pending={pendingCard === id}
+                planned={isPlanned ? idx + 1 : null}
+                pending={pendingCard === id || carryCard === id}
+                carrying={!!drag && !drag.returning && drag.from === null && drag.cardId === id}
                 dim={tooCostly || locked}
-                onSelect={() => selectCard(id)}
-                onZoom={() => openOverlay({ kind: 'card', abilityId: a.id, cardId: id, target: planned ? shownPlan[idx].target : undefined })}
+                onTap={(src) => tapHand(id, src)}
+                onZoom={() => openOverlay({ kind: 'card', abilityId: a.id, cardId: id, target: isPlanned ? shownSlots[idx]?.target : undefined })}
+                onDrag={(s) => beginDrag(id, null, s)}
               />
             );
           }}
@@ -596,6 +861,15 @@ export function Arena({ data, reducedMotion }: { data: AppData; reducedMotion: b
           ))}
         </section>
       </div>
+
+      {drag ? (
+        <div className={`drag-ghost ${tintClass(abilityTint(drag.abilityId))} ${drag.returning ? 'returning' : ''} ${drag.over !== null ? (drag.ok ? 'over-ok' : 'over-bad') : ''}`} ref={(el) => {
+          ghostRef.current = el;
+          placeGhost();
+        }} aria-hidden="true" data-testid="drag-ghost">
+          <img src={displayUrl(CATALOG.abilities.get(drag.abilityId)!.image)} alt="" draggable={false} />
+        </div>
+      ) : null}
 
       {view?.zoom ? (
         <div className="pair-zoom" aria-hidden="true">
@@ -718,6 +992,7 @@ function BossMoveCard({
 
 function PlanSlot({
   k,
+  cardId,
   abilityId,
   name,
   ghost,
@@ -725,14 +1000,20 @@ function PlanSlot({
   targetName,
   selected,
   moveTarget,
+  drop,
+  carrying,
+  gap,
+  gapPulse,
   active,
   done,
   locked,
   onTap,
   onZoom,
   onRemove,
+  onDrag,
 }: {
   k: number;
+  cardId: string | null;
   abilityId: string | null;
   name: string;
   ghost: boolean;
@@ -740,35 +1021,41 @@ function PlanSlot({
   targetName: string | null;
   selected: boolean;
   moveTarget: boolean;
+  drop: 'candidate' | 'over' | 'bad' | null;
+  carrying: boolean;
+  gap: boolean;
+  gapPulse: number;
   active: boolean;
   done: boolean;
   locked: boolean;
   onTap: () => void;
   onZoom: () => void;
   onRemove: () => void;
+  onDrag: (s: DragStart) => boolean;
 }) {
-  const tap = useTap(onTap, onZoom);
-  const filled = !!abilityId && !ghost;
+  const filled = !!cardId && !ghost;
+  const g = useCardGesture({ onTap: () => onTap(), onDoubleTap: onZoom, onDrag: filled && !locked ? onDrag : undefined, dragOnMove: true });
   const tint = abilityId ? abilityTint(abilityId) : null;
   return (
     <div
-      className={`pslot ${filled ? 'filled' : ghost ? 'ghost' : 'vacant'} ${tint ? tintClass(tint) : ''} ${selected ? 'selected' : ''} ${moveTarget ? 'move-target' : ''} ${active ? 'active' : ''} ${done ? 'done' : ''}`}
+      className={`pslot ${filled ? 'filled' : ghost ? 'ghost' : 'vacant'} ${tint ? tintClass(tint) : ''} ${selected ? 'selected' : ''} ${moveTarget ? 'move-target' : ''} ${drop ? `drop-${drop}` : ''} ${carrying ? 'carrying' : ''} ${gap ? 'gap' : ''} ${active ? 'active' : ''} ${done ? 'done' : ''}`}
       data-slot={k + 1}
       data-ability={filled ? (abilityId ?? undefined) : undefined}
+      data-card={filled ? (cardId ?? undefined) : undefined}
       style={{ gridArea: `s${k + 1}` }}
     >
       <button
         type="button"
         className="card-img-btn"
-        {...tap}
+        {...g}
         aria-pressed={filled ? selected : undefined}
         aria-label={
           filled
-            ? `الخانة ${k + 1}: ${name}${targetName ? `، الهدف ${targetName}` : ''}. لمسة لتحديدها ثم نقلها أو تغيير هدفها، ولمستان للتكبير`
+            ? `الخانة ${k + 1}: ${name}${targetName ? `، الهدف ${targetName}` : ''}. اسحبها لنقلها، ولمسة لتغيير هدفها، ولمستان للتكبير`
             : ghost
               ? `الخانة ${k + 1}: ${name} بانتظار اختيار الهدف`
-              : moveTarget
-                ? `انقل البطاقة المحددة إلى الخانة ${k + 1}`
+              : drop === 'candidate' || moveTarget
+                ? `ضع البطاقة في الخانة ${k + 1}`
                 : `الخانة ${k + 1} فارغة`
         }
       >
@@ -778,6 +1065,7 @@ function PlanSlot({
       <span className="slot-no" aria-hidden="true">
         <Num>{k + 1}</Num>
       </span>
+      {gap && gapPulse ? <span className="gap-pulse" key={gapPulse} aria-hidden="true" /> : null}
       {targetImg ? (
         <span className="slot-target" title={targetName ?? undefined} aria-hidden="true">
           <img src={targetImg} alt="" draggable={false} />
@@ -787,7 +1075,7 @@ function PlanSlot({
         <button
           type="button"
           className="slot-x"
-          aria-label={ghost ? `إلغاء اختيار ${name}` : `إزالة ${name} من الخانة ${k + 1}`}
+          aria-label={ghost ? `إلغاء وضع ${name}` : `إزالة ${name} من الخانة ${k + 1}`}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
@@ -813,9 +1101,11 @@ function HandCard({
   tint,
   planned,
   pending,
+  carrying,
   dim,
-  onSelect,
+  onTap,
   onZoom,
+  onDrag,
 }: {
   abilityId: string;
   name: string;
@@ -823,18 +1113,20 @@ function HandCard({
   tint: Tint;
   planned: number | null;
   pending: boolean;
+  carrying: boolean;
   dim: boolean;
-  onSelect: () => void;
+  onTap: (src: TapSource) => void;
   onZoom: () => void;
+  onDrag: (s: DragStart) => boolean;
 }) {
-  const tap = useTap(onSelect, onZoom);
+  const g = useCardGesture({ onTap, onDoubleTap: onZoom, onDrag });
   return (
-    <div className={`hand-card ${tintClass(tint)} ${planned ? 'planned' : ''} ${pending ? 'pending' : ''} ${dim ? 'dim' : ''}`} data-ability={abilityId}>
+    <div className={`hand-card ${tintClass(tint)} ${planned ? 'planned' : ''} ${pending ? 'pending' : ''} ${carrying ? 'carrying' : ''} ${dim ? 'dim' : ''}`} data-ability={abilityId}>
       <button
         type="button"
         className="card-img-btn"
-        {...tap}
-        aria-label={`${name} — ${cost} طاقة${planned ? ` — في الخانة ${planned}` : ''}. لمسة للاختيار، ولمستان للتكبير`}
+        {...g}
+        aria-label={`${name} — ${cost} طاقة${planned ? ` — في الخانة ${planned}` : ''}. أمسكها ثم اسحبها إلى خانة، ولمستان للتكبير`}
         aria-pressed={!!planned || pending}
       >
         <img src={displayUrl(CATALOG.abilities.get(abilityId)!.image)} alt={name} draggable={false} />

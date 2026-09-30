@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { idbGet, leaveArena, openArenaMenu, passRound, putCardsFirst, startBattle, touchSwipe } from './helpers';
+import { dragToSlot, idbGet, leaveArena, openArenaMenu, passRound, putCardsFirst, startBattle, touchDrag, touchSwipe } from './helpers';
 
 type Rec = {
   rev: number;
@@ -14,15 +14,18 @@ type Rec = {
     boss: { hp: number };
     cards: Record<string, { abilityId: string }>;
   };
-  execution?: { id: string; cursor: number; events: unknown[] };
+  execution?: { id: string; cursor: number; plan: Array<{ cardId: string; target?: number }>; events: Array<{ t: string; slot?: number; player?: { abilityId: string; cancelled?: boolean } }> };
   prep: { prepId: string; candidates: string[] };
 };
-type Draft = { key: string; plan: Array<{ cardId: string; target?: number }> };
+type Draft = { key: string; slots: Array<{ cardId: string; target?: number } | null> };
 
 const draft = async (page: Page) => (await idbGet<{ value: Draft }>(page, 'meta', 'battleDraft'))?.value;
 const energy = (page: Page) => page.getByTestId('energy');
 const filled = (page: Page) => page.locator('.pslot.filled');
 const handBtn = (page: Page, ability: string) => page.locator(`.hand-card[data-ability="${ability}"] .card-img-btn`);
+const slotOf = (page: Page, k: number) => page.locator(`.pslot[data-slot="${k}"]`);
+const draftSlots = async (page: Page) => (await draft(page))?.slots.map((p) => (p ? p.cardId : null));
+const rec = (page: Page) => idbGet<Rec>(page, 'battle', 'current');
 
 test.beforeEach(async ({ page }) => {
   await page.goto('./');
@@ -121,7 +124,8 @@ test('اليد: أربع بطاقات كاملة، والسحب يمينًا ي�
   await touchSwipe(page, vp.x + vp.width - 40, y, vp.x + 60); // والعكس يعود
   await expect(page.locator('.hand-track')).toHaveAttribute('data-page', '0');
   await page.waitForTimeout(450);
-  // السحب لم يختر شيئًا ولم يستهلك طاقة
+  // السحب لم يختر شيئًا ولم يحمل بطاقة ولم يستهلك طاقة
+  await expect(page.getByTestId('drag-ghost')).toHaveCount(0);
   await expect(filled(page)).toHaveCount(0);
   await expect(energy(page)).toContainText('7/7');
   await expect(page.locator('.hand-card.planned, .hand-card.pending')).toHaveCount(0);
@@ -131,99 +135,159 @@ test('اليد: أربع بطاقات كاملة، والسحب يمينًا ي�
   expect(after.rev).toBe(before.rev);
 });
 
-test('لمسة تختار ولمستان تكبّران دون تغيير الخطة أو الطاقة؛ × يزيل ويعيد الطاقة', async ({ page }) => {
+test('اللمسة لا تضيف واللمستان تكبّران؛ السحب باللمس يضع البطاقة في الخانة المختارة؛ الرفض يعيدها دون أي تغيير؛ × يعيد الطاقة', async ({ page }) => {
   await startBattle(page);
-  await putCardsFirst(page, ['nuba:N2', 'skadi:S1', 'hayato:H1', 'nuba:N1']);
-  // لمستان على بطاقة في اليد: تكبير فقط
+  await putCardsFirst(page, ['nuba:N4', 'skadi:S4', 'nuba:N2', 'hayato:H1']);
+  // لمسة واحدة: لا إضافة، وتلميح بالسحب
+  await handBtn(page, 'N2').click();
+  await expect(page.locator('.mode-hint')).toContainText('اسحبها');
+  await expect(filled(page)).toHaveCount(0);
+  await expect(energy(page)).toContainText('7/7');
+  // لمستان: تكبير فقط
   await handBtn(page, 'N2').dblclick();
   await expect(page.locator('.zoom-img')).toBeVisible();
   await page.getByRole('button', { name: 'إغلاق' }).first().click();
   await page.waitForTimeout(400);
   await expect(filled(page)).toHaveCount(0);
   await expect(energy(page)).toContainText('7/7');
-  // لمسة واحدة: اختيار
-  await handBtn(page, 'N2').click();
+  // الإفلات خارج الخانات: تعود دون تغيير
+  const r0 = await rec(page);
+  await touchDrag(page, '.hand-card[data-ability="N2"] .card-img-btn', '.boss-banner');
+  await expect(page.getByTestId('drag-ghost')).toHaveCount(0);
+  await expect(filled(page)).toHaveCount(0);
+  await expect(energy(page)).toContainText('7/7');
+  // إمساك ثم جرّ أفقي داخل اليد: البطاقة محمولة فلا يتحرك الصف، وتعود عند الإفلات خارج الخانات
+  const vp = (await page.getByTestId('hand-viewport').boundingBox())!;
+  const h1 = (await handBtn(page, 'H1').boundingBox())!;
+  await touchDrag(page, { x: h1.x + h1.width / 2, y: h1.y + h1.height / 2 }, { x: vp.x + vp.width - 20, y: h1.y + h1.height / 2 });
+  await expect(page.locator('.hand-track')).toHaveAttribute('data-page', '0');
+  await expect(filled(page)).toHaveCount(0);
+  await expect(energy(page)).toContainText('7/7');
+  // سحب إلى الخانة 2 مباشرة (دون تعبئة 1)
+  await dragToSlot(page, 'N2', 2);
+  await expect(slotOf(page, 2)).toHaveAttribute('data-ability', 'N2');
   await expect(filled(page)).toHaveCount(1);
   await expect(energy(page)).toContainText('5/7');
-  await expect(page.getByTestId('execute')).toBeEnabled();
-  // لمستان على البطاقة المخططة (في الخطة وفي اليد): تكبير، والخطة كما هي
-  await page.locator('.pslot[data-slot="1"] .card-img-btn').dblclick();
-  await expect(page.locator('.zoom-img')).toBeVisible();
-  await page.getByRole('button', { name: 'إغلاق' }).first().click();
-  await handBtn(page, 'N2').dblclick();
+  await expect.poll(() => draftSlots(page)).toEqual([null, 'nuba:N2', null]);
+  // لا نسخة ثانية: البطاقة المخططة في اليد لا تُحمل، ولا يتصفح الصف بالإصبع نفسه
+  await dragToSlot(page, 'N2', 1);
+  await expect(filled(page)).toHaveCount(1);
+  await expect(page.locator('.hand-track')).toHaveAttribute('data-page', '0');
+  await expect(energy(page)).toContainText('5/7');
+  await expect.poll(() => draftSlots(page)).toEqual([null, 'nuba:N2', null]);
+  // خانة مشغولة ترفض البطاقة الجديدة وتعيدها
+  await dragToSlot(page, 'H1', 2);
+  await expect(page.getByText('الخانة 2 مشغولة')).toBeVisible();
+  await expect(slotOf(page, 2)).toHaveAttribute('data-ability', 'N2');
+  await expect(energy(page)).toContainText('5/7');
+  // طاقة غير كافية: N4 (4) ثم S4 (4) ترفض دون تغيير
+  await dragToSlot(page, 'N4', 1);
+  await expect(energy(page)).toContainText('1/7');
+  await dragToSlot(page, 'S4', 3);
+  await expect(page.getByText(/الطاقة لا تكفي/)).toBeVisible();
+  await expect(slotOf(page, 3)).not.toHaveClass(/filled/);
+  await expect(energy(page)).toContainText('1/7');
+  await expect.poll(() => draftSlots(page)).toEqual(['nuba:N4', 'nuba:N2', null]);
+  // لمستان على بطاقة مخططة: تكبير، والخطة كما هي
+  await slotOf(page, 2).locator('.card-img-btn').dblclick();
   await expect(page.locator('.zoom-img')).toBeVisible();
   await page.getByRole('button', { name: 'إغلاق' }).first().click();
   await page.waitForTimeout(400);
-  await expect(filled(page)).toHaveCount(1);
-  await expect(energy(page)).toContainText('5/7');
-  await expect(page.locator('.pslot.selected')).toHaveCount(0);
-  // لمستان على حركة زعيم ظاهرة: الأصل وأهدافها
-  const rec = await idbGet<Rec>(page, 'battle', 'current');
-  const vis = rec.state.bossPlan.findIndex((b) => !b.hidden);
-  await page.locator(`.bmove[data-slot="${vis + 1}"] .card-img-btn`).dblclick();
-  await expect(page.locator('.zoom-img')).toBeVisible();
-  await expect(page.getByText('أهداف هذه الجولة')).toBeVisible();
-  await page.getByRole('button', { name: 'إغلاق' }).first().click();
-  // لمسة على حركة ظاهرة تعلّم أهدافها على الأبطال
-  await page.locator(`.bmove[data-slot="${vis + 1}"] .card-img-btn`).click();
-  const targets = rec.state.bossPlan[vis].targets;
-  if (targets.length) await expect(page.locator('.hero-token.threat')).toHaveCount(targets.length);
-  else await expect(page.locator('.boss-banner.self-target')).toHaveCount(1);
-  await page.keyboard.press('Escape');
-  // × يزيل ويعيد الطاقة، دون تكبير أو تنفيذ
+  await expect(filled(page)).toHaveCount(2);
+  await expect(energy(page)).toContainText('1/7');
+  // × يزيل ويعيد الطاقة دون تكبير أو تنفيذ
   await page.getByRole('button', { name: /إزالة .* من الخانة 1/ }).click();
-  await expect(filled(page)).toHaveCount(0);
-  await expect(energy(page)).toContainText('7/7');
+  await expect(filled(page)).toHaveCount(1);
+  await expect(energy(page)).toContainText('5/7');
   await expect(page.locator('.zoom-img')).toHaveCount(0);
-  const r2 = await idbGet<Rec>(page, 'battle', 'current');
-  expect(r2.state.round).toBe(1);
-  expect(r2.rev).toBe(rec.rev);
-  // ثلاث بطاقات كحد أقصى وحساب الطاقة 7
-  for (const a of ['S1', 'H1', 'N1']) await handBtn(page, a).click();
-  await expect(filled(page)).toHaveCount(3);
-  await expect(energy(page)).toContainText('4/7');
-  await handBtn(page, 'N2').click();
-  await expect(page.getByText('ثلاث بطاقات كحد أقصى')).toBeVisible();
-  await expect(filled(page)).toHaveCount(3);
+  const r1 = await rec(page);
+  expect(r1.state.round).toBe(1);
+  expect(r1.rev).toBe(r0.rev);
+  expect(r1.state.hand).toEqual(r0.state.hand);
 });
 
-test('إعادة الترتيب بلمس خانتين، وتعديل الهدف بلمس الخانة ثم بطل؛ صاحب «إير» ممنوع هدفًا لنفسه', async ({ page }) => {
+test('وضع البطاقات بالترتيب 3 ثم 1 ثم 2 (مع هدف بعد الإفلات)، وكل بطاقة تنفَّذ في خانتها دون تكرار أو خطأ في الطاقة', async ({ page }) => {
   await startBattle(page);
-  await putCardsFirst(page, ['eir:E1', 'nuba:N1', 'skadi:S1', 'hayato:H1']);
-  await handBtn(page, 'E1').click();
-  await expect(page.locator('.pslot.ghost')).toHaveCount(1);
-  await expect(page.locator('.mode-hint')).toContainText('اختر هدفًا');
-  await expect(page.locator('.hero-token[data-unit="h3"]')).toBeDisabled();
+  await putCardsFirst(page, ['eir:E1', 'nuba:N3', 'skadi:S2', 'hayato:H1']);
+  await dragToSlot(page, 'N3', 3);
+  await expect(energy(page)).toContainText('4/7');
+  await dragToSlot(page, 'H1', 1);
+  await expect(energy(page)).toContainText('3/7');
+  // E1 تحتاج حليفًا: يُطلب الهدف بعد الإفلات، والطاقة محجوزة
+  await dragToSlot(page, 'E1', 2);
+  await expect(page.locator('.pslot.ghost[data-slot="2"]')).toHaveCount(1);
+  await expect(energy(page)).toContainText('2/7');
+  await expect(page.locator('.hero-token[data-unit="h3"]')).toBeDisabled(); // إير نفسها
   await expect(page.locator('.hero-token.selectable')).toHaveCount(4);
+  // إلغاء الهدف يلغي الإضافة ويعيد الطاقة
+  await page.getByRole('button', { name: /إلغاء وضع/ }).click();
+  await expect(page.locator('.pslot.ghost')).toHaveCount(0);
+  await expect(energy(page)).toContainText('3/7');
+  await expect.poll(() => draftSlots(page)).toEqual(['hayato:H1', null, 'nuba:N3']);
+  // وبـEsc أيضًا
+  await dragToSlot(page, 'E1', 2);
+  await page.keyboard.press('Escape');
+  await expect(energy(page)).toContainText('3/7');
+  // ثم الوضع الفعلي مع هدف نوبا
+  await dragToSlot(page, 'E1', 2);
   await page.locator('.hero-token[data-unit="h1"]').click();
-  await expect(filled(page)).toHaveCount(1);
-  await expect(page.locator('.pslot[data-slot="1"] .slot-target')).toHaveCount(1);
-  await handBtn(page, 'N1').click();
-  await expect(filled(page)).toHaveCount(2);
-  await expect.poll(async () => (await draft(page))?.plan.map((p) => p.cardId)).toEqual(['eir:E1', 'nuba:N1']);
-  // إعادة الترتيب: لمس الخانة 1 ثم الخانة 2
-  await page.locator('.pslot[data-slot="1"] .card-img-btn').click();
-  await expect(page.locator('.pslot[data-slot="1"]')).toHaveClass(/selected/);
-  await expect(page.locator('.pslot[data-slot="2"]')).toHaveClass(/move-target/);
-  await expect(page.locator('.hero-token.current')).toHaveCount(1);
-  await page.locator('.pslot[data-slot="2"] .card-img-btn').click();
-  await expect(page.locator('.pslot[data-slot="1"]')).toHaveAttribute('data-ability', 'N1');
-  await expect(page.locator('.pslot[data-slot="2"]')).toHaveAttribute('data-ability', 'E1');
-  await expect.poll(async () => (await draft(page))?.plan.map((p) => p.cardId)).toEqual(['nuba:N1', 'eir:E1']);
-  // تعديل الهدف: لمس الخانة ثم بطل آخر مسموح
-  await page.locator('.pslot[data-slot="2"] .card-img-btn').click();
-  await expect(page.locator('.hero-token[data-unit="h1"]')).toHaveClass(/current/);
-  await expect(page.locator('.hero-token[data-unit="h3"]')).not.toHaveClass(/selectable/);
-  await page.locator('.hero-token[data-unit="h0"]').click();
-  await expect.poll(async () => (await draft(page))?.plan[1]).toEqual({ cardId: 'eir:E1', target: 0 });
-  await expect(energy(page)).toContainText('5/7');
-  // التنفيذ يقفل الخطة: لا × أثناء العرض، والزر معطل ضد التكرار
+  await expect(filled(page)).toHaveCount(3);
+  await expect(energy(page)).toContainText('2/7');
+  await expect.poll(async () => (await draft(page))?.slots).toEqual([{ cardId: 'hayato:H1' }, { cardId: 'eir:E1', target: 1 }, { cardId: 'nuba:N3' }]);
+  // التنفيذ: الخانات 1 ثم 2 ثم 3 كما وُضعت
   await page.getByTestId('execute').click();
   await expect(page.getByTestId('arena')).toHaveClass(/is-playing/);
+  const r = await rec(page);
+  expect(r.state.round).toBe(2);
+  expect(r.execution!.plan).toEqual([{ cardId: 'hayato:H1' }, { cardId: 'eir:E1', target: 1 }, { cardId: 'nuba:N3' }]);
+  const starts = r.execution!.events.filter((e) => e.t === 'slotStart').map((e) => [e.slot, e.player?.abilityId]);
+  expect(starts).toEqual([
+    [0, 'H1'],
+    [1, 'E1'],
+    [2, 'N3'],
+  ]);
+  // لا تكرار: كل بطاقة في مكان واحد فقط
+  const all = [...r.state.hand, ...r.state.draw, ...r.state.discard];
+  expect(new Set(all).size).toBe(all.length);
+  // القفل أثناء التنفيذ: لا × ولا حمل
   await expect(page.getByTestId('execute')).toBeDisabled();
   await expect(page.locator('.slot-x')).toHaveCount(0);
-  const mid = await idbGet<Rec>(page, 'battle', 'current');
-  expect(mid.state.round).toBe(2);
+  await touchDrag(page, '.hand-card .card-img-btn', '.pslot[data-slot="1"]');
+  await expect(page.getByTestId('drag-ghost')).toHaveCount(0);
+});
+
+test('نقل بطاقة مخططة إلى خانة فارغة وتبادل خانتين مع بقاء الأهداف؛ الفراغ قبل بطاقة يمنع التنفيذ دون ضغط تلقائي', async ({ page }) => {
+  await startBattle(page);
+  await putCardsFirst(page, ['eir:E1', 'nuba:N1', 'skadi:S1', 'hayato:H1']);
+  await dragToSlot(page, 'N1', 3);
+  // فراغ قبل بطاقة: التنفيذ يطلب إكمال الترتيب ولا يرسل شيئًا
+  const r0 = await rec(page);
+  await expect(page.locator('.mode-hint')).toContainText('الخانة 1 فارغة');
+  await page.getByTestId('execute').click();
+  await expect(page.locator('.toast', { hasText: 'أكمل ترتيب الخطة' })).toBeVisible();
+  expect((await rec(page)).rev).toBe(r0.rev);
+  await expect.poll(() => draftSlots(page)).toEqual([null, null, 'nuba:N1']);
+  // نقل من 3 إلى 1 بالسحب: بلا كلفة
+  await touchDrag(page, '.pslot[data-slot="3"] .card-img-btn', '.pslot[data-slot="1"]');
+  await expect.poll(() => draftSlots(page)).toEqual(['nuba:N1', null, null]);
+  await expect(energy(page)).toContainText('6/7');
+  // E1 بهدف نوبا في 2، ثم تبادل 1 و2 بالسحب مع بقاء الهدف
+  await dragToSlot(page, 'E1', 2);
+  await page.locator('.hero-token[data-unit="h1"]').click();
+  await expect(energy(page)).toContainText('5/7');
+  await touchDrag(page, '.pslot[data-slot="2"] .card-img-btn', '.pslot[data-slot="1"]');
+  await expect.poll(async () => (await draft(page))?.slots).toEqual([{ cardId: 'eir:E1', target: 1 }, { cardId: 'nuba:N1' }, null]);
+  await expect(energy(page)).toContainText('5/7');
+  await expect(slotOf(page, 1).locator('.slot-target')).toHaveCount(1);
+  // تعديل الهدف: لمس الخانة ثم بطل آخر مسموح
+  await slotOf(page, 1).locator('.card-img-btn').click();
+  await expect(page.locator('.hero-token[data-unit="h1"]')).toHaveClass(/current/);
+  await page.locator('.hero-token[data-unit="h0"]').click();
+  await expect.poll(async () => (await draft(page))?.slots[0]).toEqual({ cardId: 'eir:E1', target: 0 });
+  // بلا فراغ الآن: التنفيذ يعمل ويرسل الخانتين كما هما
+  await page.getByTestId('execute').click();
+  await expect(page.getByTestId('arena')).toHaveClass(/is-playing/);
+  expect((await rec(page)).execution!.plan).toEqual([{ cardId: 'eir:E1', target: 0 }, { cardId: 'nuba:N1' }]);
 });
 
 test('الحركة المخفية لا تتسرب: لا معرّف ولا صورة ولا هدف، وتكبيرها يعرض الظهر فقط', async ({ page }) => {
@@ -263,7 +327,7 @@ test('الحركة المخفية لا تتسرب: لا معرّف ولا صور
 test('قائمة الترس: فتحها وإغلاقها لا يمس الخطة؛ تمرير الجولة بتأكيد؛ الخروج ثم المتابعة؛ الانسحاب بتأكيد يعيد التنقل', async ({ page }) => {
   await startBattle(page);
   await putCardsFirst(page, ['nuba:N2', 'skadi:S1', 'hayato:H1', 'nuba:N1']);
-  await handBtn(page, 'N2').click();
+  await dragToSlot(page, 'N2', 1);
   await expect(filled(page)).toHaveCount(1);
   const rev0 = (await idbGet<Rec>(page, 'battle', 'current')).rev;
   await openArenaMenu(page);
@@ -310,7 +374,7 @@ test('التخطيط ثم إعادة التحميل: نفس اليد وخطة ا
   await page.getByTestId('arena').waitFor();
   await putCardsFirst(page, ['skadi:S2', 'hayato:H1', 'nuba:N1', 'skadi:S1']);
   const rec = await idbGet<Rec>(page, 'battle', 'current');
-  await handBtn(page, 'S2').click();
+  await dragToSlot(page, 'S2', 3);
   await expect(filled(page)).toHaveCount(1);
   await expect(page.locator('.hand-card')).toHaveCount(8); // البطاقة تبقى مظللة في اليد
   await page.waitForTimeout(300);
@@ -319,14 +383,16 @@ test('التخطيط ثم إعادة التحميل: نفس اليد وخطة ا
   const rec2 = await idbGet<Rec>(page, 'battle', 'current');
   expect(rec2.state.hand).toEqual(rec.state.hand);
   expect(rec2.state.bossPlan).toEqual(rec.state.bossPlan);
+  // المسودة تحفظ الخانة المختارة نفسها (3) دون ضغطها
   await expect(filled(page)).toHaveCount(1);
+  await expect(slotOf(page, 3)).toHaveAttribute('data-ability', 'S2');
   await expect(energy(page)).toContainText('5/7');
 });
 
 test('إعادة التحميل أثناء عرض التنفيذ لا تعيد تطبيق الضرر', async ({ page }) => {
   await startBattle(page);
   await putCardsFirst(page, ['nuba:N3', 'hayato:H1', 'nuba:N1', 'skadi:S1']);
-  await handBtn(page, 'N3').click();
+  await dragToSlot(page, 'N3', 1);
   await expect(filled(page)).toHaveCount(1);
   await page.getByTestId('execute').click();
   await expect(page.getByTestId('arena')).toHaveClass(/is-playing/);
@@ -376,7 +442,7 @@ test('الفوز يعرض شاشة النتيجة ويمنح الخمسة +1، �
       }),
   );
   await putCardsFirst(page, ['skadi:S2', 'hayato:H1', 'nuba:N1', 'skadi:S1']);
-  await handBtn(page, 'S2').click();
+  await dragToSlot(page, 'S2', 1);
   await expect(filled(page)).toHaveCount(1);
   await page.getByTestId('execute').click();
   await page.getByRole('button', { name: 'تخطي العرض' }).click();
@@ -416,12 +482,18 @@ test('معركة كاملة عبر الواجهة حتى النهاية دون �
   expect(errors).toEqual([]);
 });
 
-test('لوحة المفاتيح وقارئ الشاشة: Enter يختار، وزر التكبير المخفي يظهر عند التركيز ويكبّر، والتركيز على بطاقة بعيدة يقلب اليد', async ({ page }) => {
+test('لوحة المفاتيح وقارئ الشاشة: Enter يحمل البطاقة ثم Enter على خانة يضعها؛ زر التكبير المخفي يظهر عند التركيز؛ التركيز على بطاقة بعيدة يقلب اليد', async ({ page }) => {
   await startBattle(page);
   await putCardsFirst(page, ['nuba:N2', 'skadi:S1', 'hayato:H1', 'nuba:N1']);
   await handBtn(page, 'N2').focus();
   await page.keyboard.press('Enter');
-  await expect(filled(page)).toHaveCount(1);
+  await expect(page.locator('.mode-hint')).toContainText('اختر الخانة');
+  await expect(page.locator('.pslot.drop-candidate')).toHaveCount(3);
+  await slotOf(page, 2).locator('.card-img-btn').focus();
+  await page.keyboard.press('Enter');
+  await expect(slotOf(page, 2)).toHaveAttribute('data-ability', 'N2');
+  await expect(energy(page)).toContainText('5/7');
+  await handBtn(page, 'N2').focus();
   await page.keyboard.press('Tab');
   const zoom = page.locator('.hand-card[data-ability="N2"] .sr-zoom');
   await expect(zoom).toBeFocused();
@@ -456,5 +528,10 @@ test.describe('شاشة قصيرة 360×640', () => {
     expect(visible).toEqual([true, true, true, true]);
     const xs = await Promise.all(['[data-testid=execute]', '.pslot[data-slot="3"]', '.pslot[data-slot="1"]', '[data-testid=energy]'].map(async (s) => (await page.locator(s).boundingBox())!.x));
     expect([...xs].sort((a, b) => a - b)).toEqual(xs);
+    // السحب باللمس يعمل على الشاشة القصيرة أيضًا
+    await putCardsFirst(page, ['nuba:N1', 'skadi:S1', 'hayato:H1', 'nuba:N2']);
+    await dragToSlot(page, 'S1', 3);
+    await expect(slotOf(page, 3)).toHaveAttribute('data-ability', 'S1');
+    await expect(energy(page)).toContainText('6/7');
   });
 });

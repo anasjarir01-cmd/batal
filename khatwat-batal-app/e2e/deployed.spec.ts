@@ -1,7 +1,7 @@
 // تحقق على الموقع المنشور فعليًا (يعمل فقط عند ضبط DEPLOYED_URL، مثل خطوة التحقق في workflow النشر):
 // قابلية تثبيت PWA حسب Chrome نفسه، العمل دون إنترنت بعد إعادة تحميل فعلية، وتصدير النسخة الاحتياطية.
 import { expect, test } from '@playwright/test';
-import { closeSheet, openArenaMenu, openSettings, passRound, startBattle } from './helpers';
+import { closeSheet, dragToSlot, openArenaMenu, openSettings, passRound, putCardsFirst, startBattle } from './helpers';
 
 const URL = process.env.DEPLOYED_URL;
 test.skip(!URL, 'DEPLOYED_URL غير مضبوط');
@@ -65,7 +65,7 @@ test('الموقع المنشور: قابل للتثبيت، يعمل دون إ�
   await context.setOffline(false);
 });
 
-test('الموقع المنشور يقدّم ساحة القتال الجديدة: بلا ترويسة أو شريط تنقل، والترس والخطة والطاقة في أماكنها', async ({ page }) => {
+test('الموقع المنشور يقدّم ساحة القتال الجديدة: بلا ترويسة أو شريط تنقل، والترس والخطة والطاقة في أماكنها، والسحب باللمس إلى أي خانة', async ({ page }) => {
   test.setTimeout(180_000);
   await page.goto(URL!);
   await page.locator('.account-card').waitFor({ timeout: 60_000 });
@@ -78,6 +78,14 @@ test('الموقع المنشور يقدّم ساحة القتال الجديد�
   const xs = [await x('[data-testid=execute]'), await x('.pslot[data-slot="3"]'), await x('.pslot[data-slot="2"]'), await x('.pslot[data-slot="1"]'), await x('[data-testid=energy]')];
   expect([...xs].sort((a, b) => a - b)).toEqual(xs);
   await expect(page.getByTestId('energy')).toContainText('7/7');
+  // السحب والإفلات باللمس إلى خانة يختارها اللاعب (3 قبل 1)
+  await putCardsFirst(page, ['nuba:N3', 'hayato:H1', 'nuba:N1', 'skadi:S1']);
+  await dragToSlot(page, 'N3', 3);
+  await expect(page.locator('.pslot[data-slot="3"]')).toHaveAttribute('data-ability', 'N3');
+  await expect(page.getByTestId('energy')).toContainText('4/7');
+  await dragToSlot(page, 'H1', 1);
+  await expect(page.locator('.pslot[data-slot="1"]')).toHaveAttribute('data-ability', 'H1');
+  await expect(page.getByTestId('energy')).toContainText('3/7');
   await openArenaMenu(page);
   await page.getByRole('button', { name: 'إغلاق القائمة' }).click();
   await passRound(page);

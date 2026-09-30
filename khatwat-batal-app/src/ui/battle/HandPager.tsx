@@ -1,13 +1,24 @@
 // يد القدرات: صف واحد يُظهر أربع بطاقات كاملة؛ السحب بالإصبع نحو اليمين يكشف الأربع الباقية (RTL)
 // وبالعكس يعود. الانتقال محسوب بـtransform صريح، لا بافتراض اتجاه scrollLeft.
 // لا أزرار ولا نقاط ولا عداد صفحات؛ التنقل بلوحة المفاتيح ينقل الصفحة إلى البطاقة المركَّز عليها.
-// التصفح لا يسحب أي بطاقة من الرزمة، والسحب لا يُحتسب لمسة على بطاقة.
+// التصفح لا يسحب أي بطاقة من الرزمة، والسحب لا يُحتسب لمسة على بطاقة. أثناء حمل بطاقة (blockRef) يثبت الصف.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 export const CARDS_PER_PAGE = 4;
 const SWIPE_THRESHOLD = 40;
 
-export function HandPager({ items, render, resetKey }: { items: string[]; render: (id: string) => ReactNode; resetKey?: string }) {
+export function HandPager({
+  items,
+  render,
+  resetKey,
+  blockRef,
+}: {
+  items: string[];
+  render: (id: string) => ReactNode;
+  resetKey?: string;
+  /** true أثناء حمل بطاقة: الصف لا يتحرك مع الإصبع. */
+  blockRef?: React.RefObject<boolean>;
+}) {
   const pages = Math.max(1, Math.ceil(items.length / CARDS_PER_PAGE));
   const [page, setPage] = useState(0);
   const [dragX, setDragX] = useState(0);
@@ -30,6 +41,11 @@ export function HandPager({ items, render, resetKey }: { items: string[]; render
   const onMove = (e: React.PointerEvent) => {
     const s = start.current;
     if (!s || s.id !== e.pointerId) return;
+    if (blockRef?.current) {
+      start.current = null;
+      setDragX(0);
+      return;
+    }
     const dx = e.clientX - s.x;
     const dy = e.clientY - s.y;
     if (s.horizontal === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
@@ -46,7 +62,7 @@ export function HandPager({ items, render, resetKey }: { items: string[]; render
   const onUp = (e: React.PointerEvent) => {
     const s = start.current;
     start.current = null;
-    if (!s || s.id !== e.pointerId || !s.horizontal) {
+    if (!s || s.id !== e.pointerId || !s.horizontal || blockRef?.current) {
       setDragX(0);
       return;
     }

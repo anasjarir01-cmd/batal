@@ -171,3 +171,37 @@ export async function leaveArena(page: Page) {
   await page.getByRole('button', { name: 'العودة إلى صفحات التطبيق' }).click();
   await page.locator('.tabbar').waitFor();
 }
+
+type Pt = { x: number; y: number };
+async function centerOf(page: Page, target: string | Pt): Promise<Pt> {
+  if (typeof target !== 'string') return target;
+  const b = await page.locator(target).first().boundingBox();
+  if (!b) throw new Error(`لا يوجد عنصر: ${target}`);
+  return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+}
+
+/**
+ * سحب وإفلات باللمس الحقيقي عبر CDP: إصبع يلمس، يُمسك قليلًا، يتحرك نحو الهدف، ثم يُرفع.
+ * hold = 0 يعني تحريكًا فوريًا بلا إمساك (كالتصفح).
+ */
+export async function touchDrag(page: Page, from: string | Pt, to: string | Pt, opts: { hold?: number; steps?: number } = {}) {
+  const a = await centerOf(page, from);
+  const b = await centerOf(page, to);
+  const client = await page.context().newCDPSession(page);
+  const send = (type: 'touchStart' | 'touchMove' | 'touchEnd', p?: Pt) => client.send('Input.dispatchTouchEvent', { type, touchPoints: p ? [{ x: p.x, y: p.y }] : [] });
+  await send('touchStart', a);
+  await page.waitForTimeout(opts.hold ?? 380);
+  const steps = opts.steps ?? 12;
+  for (let i = 1; i <= steps; i++) {
+    await send('touchMove', { x: a.x + ((b.x - a.x) * i) / steps, y: a.y + ((b.y - a.y) * i) / steps });
+    await page.waitForTimeout(16);
+  }
+  await send('touchEnd');
+  await client.detach();
+  await page.waitForTimeout(300);
+}
+
+/** نقل بطاقة من اليد إلى خانة الخطة k (1..3) بالسحب باللمس. */
+export async function dragToSlot(page: Page, ability: string, slot: number) {
+  await touchDrag(page, `.hand-card[data-ability="${ability}"] .card-img-btn`, `.pslot[data-slot="${slot}"]`);
+}
